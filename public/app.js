@@ -386,7 +386,7 @@ function playThinkingOnce() {
   if (!audioCtx || audioCtx.state !== 'running' || !thinkingBuffer) return;
   const src = audioCtx.createBufferSource();
   const g = audioCtx.createGain();
-  g.gain.value = 0.6; // subtle
+  g.gain.value = 0.28; // very subtle
   src.buffer = thinkingBuffer;
   src.connect(g); g.connect(playGain);
   src.onended = () => { thinkingSources = thinkingSources.filter((s) => s !== src); };
@@ -396,7 +396,7 @@ function playThinkingOnce() {
 function startThinkingCue() {
   stopThinkingCue();
   playThinkingOnce();
-  thinkingTimer = setInterval(playThinkingOnce, 2200);
+  thinkingTimer = setInterval(playThinkingOnce, 2800);
 }
 function stopThinkingCue() {
   if (thinkingTimer) { clearInterval(thinkingTimer); thinkingTimer = null; }
