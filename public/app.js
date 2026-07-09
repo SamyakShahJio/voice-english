@@ -550,8 +550,7 @@ function voiceError() {
   setOrb('idle');
   setStatus('Awaaz abhi uplabdh nahi hai');
   el.cards.innerHTML =
-    '<div class="error">🔇 Awaaz abhi kaam nahi kar rahi — ElevenLabs ka voice quota khatam ho gaya hai. '
-    + 'Key top-up ya replace karte hi wapas chalu ho jayegi.</div>';
+    '<div class="error">🔇 Awaaz abhi uplabdh nahi hai. Thodi der baad dobara koshish karein.</div>';
 }
 
 function fail(msg) {
