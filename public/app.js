@@ -240,10 +240,10 @@ async function handleNoInput() {
     content: '[learner abhi tak chup hai — unhe pyaar se, ek chhoti line mein dobara bulao]',
   });
   try {
-    const { reply, state } = await chat(transient, sessionState);
+    const { reply, speech, state } = await chat(transient, sessionState);
     sessionState = state;
     addBubble('jbiq', reply);
-    await speak(reply);
+    await speak(speech || reply);
   } catch (err) {
     console.error(err);
   }
@@ -274,9 +274,9 @@ async function handleUserTurn(blob) {
   const modelContent = text + confidenceNote(stt.words || []);
   messages.push({ role: 'user', content: modelContent });
 
-  let reply, state;
+  let reply, speech, state;
   try {
-    ({ reply, state } = await chat(messages, sessionState));
+    ({ reply, speech, state } = await chat(messages, sessionState));
   } catch (err) {
     console.error(err);
     setStatus('JBIQ se connect nahi ho paaya, dobara koshish.');
@@ -289,7 +289,7 @@ async function handleUserTurn(blob) {
 
   addBubble('jbiq', reply);
   renderCards(reply);
-  await speak(reply);
+  await speak(speech || reply);
   if (running) enterListening();
 }
 
@@ -404,13 +404,13 @@ async function greet() {
   setStatus('JBIQ aa rahi hain…');
   startThinkingCue();
   try {
-    const { reply, state } = await chat([], sessionState);
+    const { reply, speech, state } = await chat([], sessionState);
     sessionState = state;
     updateLessonLabel();
     messages.push({ role: 'assistant', content: reply });
     addBubble('jbiq', reply);
     renderCards(reply);
-    await speak(reply);
+    await speak(speech || reply);
   } catch (err) {
     console.error(err);
     fail('JBIQ se connect nahi ho paaya. Server chal raha hai? .env mein keys hain?');

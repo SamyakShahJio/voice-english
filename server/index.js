@@ -66,8 +66,8 @@ app.post('/api/stt', async (req, res) => {
 app.post('/api/chat', async (req, res) => {
   try {
     const { messages = [], state = { phase: 'onboarding' } } = req.body || {};
-    const { reply, state: nextState } = await runTurn(messages, state);
-    res.json({ reply, state: nextState });
+    const { reply, speech, state: nextState } = await runTurn(messages, state);
+    res.json({ reply, speech, state: nextState });
   } catch (err) {
     console.error('[chat]', err.message);
     res.status(502).json({ error: err.message });

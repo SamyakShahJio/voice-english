@@ -19,15 +19,29 @@ function anthropic() {
 }
 
 const MODEL = () => process.env.CLAUDE_MODEL || 'claude-sonnet-5';
-const MAX_TOKENS = 400; // turns are short by design
+const MAX_TOKENS = 600; // short turns, but each is emitted twice (roman + Devanagari)
 
-/** Collapse Claude content blocks into the plain text JBIQ speaks. */
+/** Collapse Claude content blocks into plain text. */
 function textOf(content) {
   return content
     .filter((b) => b.type === 'text')
     .map((b) => b.text)
     .join(' ')
     .trim();
+}
+
+/**
+ * JBIQ outputs each turn twice: the Roman/Latin half (shown on screen), then
+ * `///SPOKEN///`, then the Devanagari half (spoken aloud so Hindi sounds
+ * native). Split them; fall back to the same text for both if the marker is
+ * missing.
+ */
+function splitDual(full) {
+  const idx = full.indexOf('///SPOKEN///');
+  if (idx === -1) return { reply: full.trim(), speech: full.trim() };
+  const reply = full.slice(0, idx).trim();
+  const speech = full.slice(idx + '///SPOKEN///'.length).trim();
+  return { reply: reply || speech, speech: speech || reply };
 }
 
 /**
@@ -100,9 +114,9 @@ export async function runTurn(messages, state = { phase: 'onboarding' }) {
     }
 
     // No tool call → this is JBIQ's spoken turn.
-    const reply = textOf(res.content) || 'Maaf kijiye, dobara boliye?';
-    return { reply, state: workingState };
+    const { reply, speech } = splitDual(textOf(res.content) || 'Maaf kijiye, dobara boliye?');
+    return { reply, speech, state: workingState };
   }
 
-  return { reply: 'Chaliye, English pe wapas aate hain.', state: workingState };
+  return { reply: 'Chaliye, English pe wapas aate hain.', speech: 'चलिए, इंग्लिश पे वापस आते हैं।', state: workingState };
 }
