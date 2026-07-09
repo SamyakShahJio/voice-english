@@ -48,8 +48,8 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 18px;
-  padding: 24px 0 8px;
+  gap: 10px;
+  padding: 6px 0 4px;
 }
 
 .orb {
@@ -59,8 +59,8 @@ html, body {
   --auraA: rgba(124, 92, 255, 0.55);
   --auraB: rgba(124, 92, 255, 0.0);
   position: relative;
-  width: 200px;
-  height: 200px;
+  width: 156px;
+  height: 156px;
   display: grid;
   place-items: center;
 }
@@ -80,8 +80,8 @@ html, body {
 /* expanding rings — only run while listening / speaking */
 .ripple {
   position: absolute;
-  width: 120px;
-  height: 120px;
+  width: 92px;
+  height: 92px;
   border-radius: 50%;
   border: 2px solid var(--hue1);
   opacity: 0;
@@ -97,8 +97,8 @@ html, body {
 /* the core sphere */
 .orb-core {
   position: relative;
-  width: 108px;
-  height: 108px;
+  width: 84px;
+  height: 84px;
   border-radius: 50%;
   display: grid;
   place-items: center;

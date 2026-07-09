@@ -13,6 +13,9 @@
       <div class="lesson" id="lessonLabel"></div>
     </header>
 
+    <!-- On-screen aid: the English phrase to repeat — pops in at the top -->
+    <section class="cards" id="cards" aria-live="polite"></section>
+
     <!-- The orb: idle / listening / thinking / speaking -->
     <section class="stage">
       <div class="orb" id="orb" data-state="idle">
@@ -26,9 +29,6 @@
       </div>
       <div class="status" id="status">JBIQ taiyaar ho rahi hain…</div>
     </section>
-
-    <!-- On-screen aid: the English phrase to repeat -->
-    <section class="cards" id="cards" aria-live="polite"></section>
 
     <!-- Rolling transcript (aid, not the main event) -->
     <section class="transcript" id="transcript" aria-live="polite"></section>
