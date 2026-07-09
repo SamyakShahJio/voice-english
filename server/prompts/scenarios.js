@@ -4,8 +4,8 @@
  * Ported from the original english.html experience. This is NOT a script.
  * It is *grounding*: when a learner's request maps to one of these scenarios,
  * the server injects that scenario's key phrases / rules / vocab / coaching
- * focus into Sarah's situational prompt so her teaching is concrete and
- * consistent. When a learner asks for something NOT in here, Sarah still
+ * focus into JBIQ's situational prompt so her teaching is concrete and
+ * consistent. When a learner asks for something NOT in here, JBIQ still
  * coaches it live — she just teaches from first principles instead.
  *
  * Situations = packs. Sub-situations = scenarios.
@@ -234,7 +234,7 @@ export const PACKS = {
   },
 };
 
-/** A compact catalogue Sarah can reason over during onboarding. */
+/** A compact catalogue JBIQ can reason over during onboarding. */
 export function catalogueForPrompt() {
   return Object.values(PACKS)
     .map((pack) => {

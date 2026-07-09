@@ -1,7 +1,7 @@
 {
   "name": "voice-english",
   "version": "0.1.0",
-  "description": "Sarah — a voice-first English coach that teaches through Hindi. Scribe STT → Claude → ElevenLabs TTS.",
+  "description": "JBIQ — a voice-first English coach that teaches through Hindi. Scribe STT → Claude → ElevenLabs TTS.",
   "type": "module",
   "engines": {
     "node": ">=18"

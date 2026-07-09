@@ -3,7 +3,7 @@
  * --------------------
  * Holds the API keys and orchestrates the voice loop:
  *   /api/stt   audio  -> Scribe            -> transcript (+word confidence)
- *   /api/chat  text   -> Claude (Sarah)    -> spoken reply + session state
+ *   /api/chat  text   -> Claude (JBIQ)    -> spoken reply + session state
  *   /api/tts   text   -> ElevenLabs stream -> mp3 audio
  *
  * The browser holds the conversation history and session state and passes
@@ -44,7 +44,7 @@ app.post('/api/stt', async (req, res) => {
   }
 });
 
-/** One conversational turn with Sarah. */
+/** One conversational turn with JBIQ. */
 app.post('/api/chat', async (req, res) => {
   try {
     const { messages = [], state = { phase: 'onboarding' } } = req.body || {};
@@ -77,7 +77,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
     model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
-    voice: process.env.SARAH_VOICE_ID || 'Ms9OTvWb99V6DwRHZn6q',
+    voice: process.env.JBIQ_VOICE_ID || 'Ms9OTvWb99V6DwRHZn6q',
     hasAnthropic: !!process.env.ANTHROPIC_API_KEY,
     hasElevenLabs: !!process.env.ELEVENLABS_API_KEY,
   });
@@ -87,5 +87,5 @@ const PORT = process.env.PORT || 8795;
 app.listen(PORT, () => {
   console.log(`voice-english running on http://localhost:${PORT}`);
   console.log(`  model: ${process.env.CLAUDE_MODEL || 'claude-sonnet-5'}`);
-  console.log(`  voice: ${process.env.SARAH_VOICE_ID || 'Ms9OTvWb99V6DwRHZn6q'}`);
+  console.log(`  voice: ${process.env.JBIQ_VOICE_ID || 'Ms9OTvWb99V6DwRHZn6q'}`);
 });

@@ -1,5 +1,5 @@
 /**
- * Marker helpers. Sarah wraps target English phrases as [[EN: ...]] so the
+ * Marker helpers. JBIQ wraps target English phrases as [[EN: ...]] so the
  * client can render them as on-screen practice cards. For TTS we strip the
  * markers but keep the phrase inline, so it's spoken naturally in one breath.
  */

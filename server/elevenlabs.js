@@ -46,13 +46,13 @@ export async function transcribe(audioBuffer, mimeType = 'audio/webm') {
 }
 
 /**
- * Stream TTS audio for a chunk of Sarah's speech.
+ * Stream TTS audio for a chunk of JBIQ's speech.
  * Returns a fetch Response whose body is an mp3 stream — pipe it straight to
  * the client so playback can start before the whole clip is generated.
  * @param {string} text  a single sentence/phrase (already marker-stripped)
  */
 export async function ttsStream(text) {
-  const voiceId = process.env.SARAH_VOICE_ID || 'Ms9OTvWb99V6DwRHZn6q';
+  const voiceId = process.env.JBIQ_VOICE_ID || 'Ms9OTvWb99V6DwRHZn6q';
   const model = process.env.TTS_MODEL || 'eleven_multilingual_v2';
 
   const res = await fetch(

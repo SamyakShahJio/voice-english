@@ -1,6 +1,6 @@
-# voice-english — Sarah
+# voice-english — JBIQ
 
-A **voice-first English coach** for Hindi speakers. Sarah teaches English but talks
+A **voice-first English coach** for Hindi speakers. JBIQ teaches English but talks
 to you in **Hindi**. There's no menu — you tell her, out loud, what you want to
 practise, and she figures out the situation, picks a scenario, clarifies anything
 missing, then coaches you live: model a phrase, listen to you try it, give
@@ -14,13 +14,13 @@ rolling transcript).
 ```
 mic → VAD (silence/endpoint + barge-in)
     → /api/stt   → ElevenLabs Scribe        → transcript + word confidence
-    → /api/chat  → Claude (Sarah's brain)   → spoken reply + session state
+    → /api/chat  → Claude (JBIQ's brain)   → spoken reply + session state
     → /api/tts   → ElevenLabs streaming TTS  → audio → play → listen again
 ```
 
 - **STT:** ElevenLabs Scribe (auto-detects Hindi / English / Hinglish).
 - **Brain:** Claude, model set by `CLAUDE_MODEL` (toggle Sonnet ↔ Haiku).
-- **Voice:** ElevenLabs, Monika Sogam by default (`SARAH_VOICE_ID`), multilingual model.
+- **Voice:** ElevenLabs, Monika Sogam by default (`JBIQ_VOICE_ID`), multilingual model.
 - **Onboarding** is done by Claude via a `begin_session` tool that slot-fills
   situation + scenario from natural speech.
 - **Grounding:** curated scenarios in `server/prompts/scenarios.js` sharpen the
@@ -46,7 +46,7 @@ Open in **Chrome or Edge** (needs mic + MediaRecorder + Web Audio), click
 ```
 server/
   index.js            express app + 3 endpoints
-  claude.js           Sarah's turn (tool loop → reply + state)
+  claude.js           JBIQ's turn (tool loop → reply + state)
   elevenlabs.js       Scribe STT + streaming TTS
   text.js             [[EN: …]] marker helpers
   prompts/

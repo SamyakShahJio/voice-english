@@ -1,7 +1,7 @@
 /**
- * Claude — Sarah's brain. Runs one conversational turn:
+ * Claude — JBIQ's brain. Runs one conversational turn:
  *  - builds the system prompt from the current session state,
- *  - lets Sarah optionally call begin_session (the onboarding slot-fill tool),
+ *  - lets JBIQ optionally call begin_session (the onboarding slot-fill tool),
  *  - returns her spoken reply plus any updated session state.
  */
 
@@ -21,7 +21,7 @@ function anthropic() {
 const MODEL = () => process.env.CLAUDE_MODEL || 'claude-sonnet-5';
 const MAX_TOKENS = 400; // turns are short by design
 
-/** Collapse Claude content blocks into the plain text Sarah speaks. */
+/** Collapse Claude content blocks into the plain text JBIQ speaks. */
 function textOf(content) {
   return content
     .filter((b) => b.type === 'text')
@@ -45,7 +45,7 @@ export async function runTurn(messages, state = { phase: 'onboarding' }) {
     content: [{ type: 'text', text: m.content }],
   }));
 
-  // First turn of a session: seed a control message so Sarah greets and
+  // First turn of a session: seed a control message so JBIQ greets and
   // begins onboarding (Anthropic requires a leading user message).
   if (convo.length === 0) {
     convo.push({
@@ -83,7 +83,7 @@ export async function runTurn(messages, state = { phase: 'onboarding' }) {
         goal: input.goal || workingState.goal || '',
       };
 
-      // Feed the tool result back so Sarah continues in the SAME logical turn,
+      // Feed the tool result back so JBIQ continues in the SAME logical turn,
       // now under the teaching-phase system prompt.
       convo.push({ role: 'assistant', content: res.content });
       convo.push({
@@ -99,7 +99,7 @@ export async function runTurn(messages, state = { phase: 'onboarding' }) {
       continue; // next hop produces the spoken reply
     }
 
-    // No tool call → this is Sarah's spoken turn.
+    // No tool call → this is JBIQ's spoken turn.
     const reply = textOf(res.content) || 'Maaf kijiye, dobara boliye?';
     return { reply, state: workingState };
   }

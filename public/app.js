@@ -3,16 +3,16 @@
  * --------------------
  * Fully voice-driven. No buttons to progress a lesson — the mic and an
  * energy-based VAD decide when the learner has finished a turn, then:
- *   record -> /api/stt -> /api/chat (Sarah) -> /api/tts -> play -> listen again
- * Supports barge-in (start speaking to interrupt Sarah).
+ *   record -> /api/stt -> /api/chat (JBIQ) -> /api/tts -> play -> listen again
+ * Supports barge-in (start speaking to interrupt JBIQ).
  */
 
 // ---- tunables ----
 const SILENCE_MS = 900;       // trailing silence that ends a turn
 const SPEECH_ONSET_MS = 150;  // sustained voice needed to count as "speaking"
 const NO_INPUT_MS = 9000;     // silence before a gentle re-prompt
-const BARGE_MIN_MS = 400;     // sustained voice needed to interrupt Sarah
-const BARGE_GUARD_MS = 500;   // ignore mic for this long after Sarah starts
+const BARGE_MIN_MS = 400;     // sustained voice needed to interrupt JBIQ
+const BARGE_GUARD_MS = 500;   // ignore mic for this long after JBIQ starts
 const ENABLE_BARGE_IN = true;
 
 // ---- element refs ----
@@ -230,7 +230,7 @@ async function handleNoInput() {
     enterListening();
     return;
   }
-  // one gentle, un-stored re-prompt from Sarah
+  // one gentle, un-stored re-prompt from JBIQ
   const transient = messages.concat({
     role: 'user',
     content: '[learner abhi tak chup hai — unhe pyaar se, ek chhoti line mein dobara bulao]',
@@ -238,7 +238,7 @@ async function handleNoInput() {
   try {
     const { reply, state } = await chat(transient, sessionState);
     sessionState = state;
-    addBubble('sarah', reply);
+    addBubble('jbiq', reply);
     await speak(reply);
   } catch (err) {
     console.error(err);
@@ -275,7 +275,7 @@ async function handleUserTurn(blob) {
     ({ reply, state } = await chat(messages, sessionState));
   } catch (err) {
     console.error(err);
-    setStatus('Sarah se connect nahi ho paaya, dobara koshish.');
+    setStatus('JBIQ se connect nahi ho paaya, dobara koshish.');
     if (running) enterListening();
     return;
   }
@@ -283,7 +283,7 @@ async function handleUserTurn(blob) {
   updateLessonLabel();
   messages.push({ role: 'assistant', content: reply });
 
-  addBubble('sarah', reply);
+  addBubble('jbiq', reply);
   renderCards(reply);
   await speak(reply);
   if (running) enterListening();
@@ -309,7 +309,7 @@ async function speak(reply) {
   mode = 'speaking';
   speakStartTs = performance.now();
   setOrb('speaking');
-  setStatus('Sarah bol rahi hain…');
+  setStatus('JBIQ bol rahi hain…');
 
   const clips = new Array(chunks.length);
   clips[0] = fetchClip(chunks[0]);
@@ -368,18 +368,18 @@ function doBargeIn() {
 async function greet() {
   mode = 'thinking';
   setOrb('thinking');
-  setStatus('Sarah aa rahi hain…');
+  setStatus('JBIQ aa rahi hain…');
   try {
     const { reply, state } = await chat([], sessionState);
     sessionState = state;
     updateLessonLabel();
     messages.push({ role: 'assistant', content: reply });
-    addBubble('sarah', reply);
+    addBubble('jbiq', reply);
     renderCards(reply);
     await speak(reply);
   } catch (err) {
     console.error(err);
-    fail('Sarah se connect nahi ho paaya. Server chal raha hai? .env mein keys hain?');
+    fail('JBIQ se connect nahi ho paaya. Server chal raha hai? .env mein keys hain?');
     return;
   }
   if (running) enterListening();
@@ -452,7 +452,7 @@ function setOrb(state) { el.orb.dataset.state = state; }
 function addBubble(who, text) {
   const div = document.createElement('div');
   div.className = 'bubble ' + who;
-  if (who === 'sarah') {
+  if (who === 'jbiq') {
     // show markers as highlighted English, strip the wrapper
     let html = '';
     let last = 0, m;
@@ -478,7 +478,7 @@ function renderCards(reply) {
     const card = document.createElement('div');
     card.className = 'phrase-card';
     card.innerHTML =
-      `<div class="pc-label">Sarah ke baad boliye</div>` +
+      `<div class="pc-label">JBIQ ke baad boliye</div>` +
       `<div class="pc-en">${esc(p)}</div>` +
       `<div class="pc-hint">Ise dohraiye</div>`;
     el.cards.appendChild(card);
