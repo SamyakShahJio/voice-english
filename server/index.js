@@ -58,7 +58,8 @@ app.post('/api/stt', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('[stt]', err.message);
-    res.status(502).json({ error: err.message });
+    const quota = /quota/i.test(err.message);
+    res.status(quota ? 429 : 502).json({ error: err.message, code: quota ? 'quota_exceeded' : 'upstream' });
   }
 });
 
@@ -87,7 +88,8 @@ app.post('/api/tts', async (req, res) => {
     Readable.fromWeb(upstream.body).pipe(res);
   } catch (err) {
     console.error('[tts]', err.message);
-    res.status(502).json({ error: err.message });
+    const quota = /quota/i.test(err.message);
+    res.status(quota ? 429 : 502).json({ error: err.message, code: quota ? 'quota_exceeded' : 'upstream' });
   }
 });
 

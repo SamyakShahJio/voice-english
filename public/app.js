@@ -30,6 +30,7 @@ const el = {
 const messages = [];                 // [{role, content}] sent to /api/chat
 let sessionState = { phase: 'onboarding' };
 let running = false;
+let voiceDown = false; // set when ElevenLabs quota / voice is unavailable
 
 // ---- audio graph ----
 let audioCtx, analyser, micStream, playGain, timeData;
@@ -186,7 +187,7 @@ function tick() {
 
 // ============================================================ listening
 function enterListening() {
-  if (!running) return;
+  if (!running || voiceDown) return;
   stopThinkingCue();
   mode = 'listening';
   hasSpoken = false;
@@ -262,6 +263,7 @@ async function handleUserTurn(blob) {
     stt = await transcribe(blob);
   } catch (err) {
     console.error(err);
+    if (err && err.quota) { voiceError(); return; }
     setStatus('STT mein dikkat aayi, dobara boliye.');
     if (running) enterListening();
     return;
@@ -322,7 +324,8 @@ async function speak(reply) {
   for (let i = 0; i < chunks.length; i++) {
     if (i + 1 < chunks.length) clips[i + 1] = fetchClip(chunks[i + 1]); // prefetch next
     let buf;
-    try { buf = await clips[i]; } catch (err) { console.error('tts', err); continue; }
+    try { buf = await clips[i]; }
+    catch (err) { if (err && err.quota) { voiceError(); return; } console.error('tts', err); continue; }
     if (bargedIn || !running) break;
     // Reset the guard window at each chunk boundary so mid-sentence echo
     // doesn't accumulate false barge-ins.
@@ -338,7 +341,7 @@ async function fetchClip(text) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
   });
-  if (!res.ok) throw new Error('tts ' + res.status);
+  if (!res.ok) throw Object.assign(new Error('tts ' + res.status), { quota: res.status === 429 });
   const arr = await res.arrayBuffer();
   return await audioCtx.decodeAudioData(arr);
 }
@@ -433,7 +436,7 @@ async function transcribe(blob) {
     headers: { 'Content-Type': blob.type || recMime },
     body: blob,
   });
-  if (!res.ok) throw new Error('stt ' + res.status);
+  if (!res.ok) throw Object.assign(new Error('stt ' + res.status), { quota: res.status === 429 });
   return res.json();
 }
 
@@ -534,6 +537,21 @@ function updateLessonLabel() {
   } else {
     el.lesson.textContent = '';
   }
+}
+
+// Voice (ElevenLabs) unavailable — usually quota. Fail loudly, not silently.
+function voiceError() {
+  if (voiceDown) return;
+  voiceDown = true;
+  stopThinkingCue();
+  try { stopPlayback(); } catch {}
+  try { if (recorder && recorder.state !== 'inactive') { recorder.onstop = null; recorder.stop(); } } catch {}
+  mode = 'idle';
+  setOrb('idle');
+  setStatus('Awaaz abhi uplabdh nahi hai');
+  el.cards.innerHTML =
+    '<div class="error">🔇 Awaaz abhi kaam nahi kar rahi — ElevenLabs ka voice quota khatam ho gaya hai. '
+    + 'Key top-up ya replace karte hi wapas chalu ho jayegi.</div>';
 }
 
 function fail(msg) {
