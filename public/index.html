@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Sarah — English coach</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">Sarah</div>
+      <div class="lesson" id="lessonLabel"></div>
+    </header>
+
+    <!-- The orb: idle / listening / thinking / speaking -->
+    <section class="stage">
+      <div class="orb" id="orb" data-state="idle">
+        <div class="orb-glow"></div>
+        <div class="ripple r1"></div>
+        <div class="ripple r2"></div>
+        <div class="ripple r3"></div>
+        <div class="orb-core">
+          <div class="eq"><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+      </div>
+      <div class="status" id="status">Sarah taiyaar ho rahi hain…</div>
+    </section>
+
+    <!-- On-screen aid: the English phrase to repeat -->
+    <section class="cards" id="cards" aria-live="polite"></section>
+
+    <!-- Rolling transcript (aid, not the main event) -->
+    <section class="transcript" id="transcript" aria-live="polite"></section>
+
+    <footer class="controls">
+      <button id="startBtn" class="btn primary" hidden>Shuru karein</button>
+      <button id="stopBtn" class="btn ghost">Rokein</button>
+    </footer>
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

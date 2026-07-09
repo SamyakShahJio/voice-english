@@ -1,0 +1,229 @@
+:root {
+  --bg: #0e0f13;
+  --surface: #17181f;
+  --surface-2: #1f212b;
+  --text: #f3f4f8;
+  --muted: #9aa0b0;
+  --accent: #7c5cff;
+  --accent-2: #a58bff;
+  --user: #2a2d3a;
+  --good: #35d0a5;
+  --line: #262835;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Devanagari", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  height: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 12px;
+}
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 4px 2px;
+}
+.brand { font-size: 20px; font-weight: 600; letter-spacing: 0.2px; }
+.lesson { font-size: 13px; color: var(--muted); text-align: right; }
+
+/* ---- Stage / orb ---- */
+.stage {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 24px 0 8px;
+}
+
+.orb {
+  --hue1: #a58bff;      /* set per state */
+  --hue2: #6d4bff;
+  --hue3: #3f2ec0;
+  --auraA: rgba(124, 92, 255, 0.55);
+  --auraB: rgba(124, 92, 255, 0.0);
+  position: relative;
+  width: 200px;
+  height: 200px;
+  display: grid;
+  place-items: center;
+}
+
+/* soft coloured aura behind everything */
+.orb-glow {
+  position: absolute;
+  inset: -18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, var(--auraA), var(--auraB) 68%);
+  filter: blur(6px);
+  opacity: 0.35;
+  transition: opacity 320ms ease, background 320ms ease;
+  animation: aura-spin 9s linear infinite;
+}
+
+/* expanding rings — only run while listening / speaking */
+.ripple {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 2px solid var(--hue1);
+  opacity: 0;
+  transform: scale(0.6);
+}
+.orb[data-state="listening"] .ripple,
+.orb[data-state="speaking"] .ripple {
+  animation: ripple-out 2.4s ease-out infinite;
+}
+.ripple.r2 { animation-delay: 0.8s; }
+.ripple.r3 { animation-delay: 1.6s; }
+
+/* the core sphere */
+.orb-core {
+  position: relative;
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255,255,255,0.55), rgba(255,255,255,0) 42%),
+    radial-gradient(circle at 50% 50%, var(--hue1), var(--hue2) 58%, var(--hue3));
+  box-shadow: 0 0 44px var(--auraA), inset 0 -10px 22px rgba(0,0,0,0.28);
+  transition: transform 90ms ease-out, background 320ms ease, box-shadow 320ms ease;
+}
+
+/* equaliser bars inside the core — only visible while speaking */
+.eq { display: flex; align-items: center; gap: 5px; height: 40px; opacity: 0; transform: scale(0.6); transition: opacity 220ms ease, transform 220ms ease; }
+.eq i {
+  width: 5px; height: 14px; border-radius: 3px;
+  background: rgba(255,255,255,0.92);
+  box-shadow: 0 0 6px rgba(255,255,255,0.6);
+}
+
+/* ---------- idle ---------- */
+.orb[data-state="idle"] {
+  --hue1: #8f88b8; --hue2: #5a5488; --hue3: #38345c;
+  --auraA: rgba(124,92,255,0.28); --auraB: rgba(124,92,255,0);
+}
+.orb[data-state="idle"] .orb-core { animation: float 4.5s ease-in-out infinite; }
+.orb[data-state="idle"] .orb-glow { opacity: 0.18; }
+
+/* ---------- listening (hearing you) — teal, reactive to mic level ---------- */
+.orb[data-state="listening"] {
+  --hue1: #7bf4cf; --hue2: #24c79b; --hue3: #148f70;
+  --auraA: rgba(45, 212, 165, 0.6); --auraB: rgba(45, 212, 165, 0);
+}
+.orb[data-state="listening"] .orb-core {
+  transform: scale(calc(0.92 + var(--level, 0) * 0.5));
+}
+.orb[data-state="listening"] .orb-glow { opacity: calc(0.4 + var(--level, 0) * 0.5); }
+.orb[data-state="listening"] .ripple { border-color: rgba(45, 212, 165, 0.5); }
+
+/* ---------- thinking — amber, soft pulse ---------- */
+.orb[data-state="thinking"] {
+  --hue1: #ffd98a; --hue2: #f2a23c; --hue3: #b9721a;
+  --auraA: rgba(242, 162, 60, 0.45); --auraB: rgba(242, 162, 60, 0);
+}
+.orb[data-state="thinking"] .orb-core { animation: pulse 1.2s ease-in-out infinite; }
+
+/* ---------- speaking (Sarah's voice) — violet, ripples + equaliser ---------- */
+.orb[data-state="speaking"] {
+  --hue1: #c3aaff; --hue2: #7c5cff; --hue3: #4a35c9;
+  --auraA: rgba(124, 92, 255, 0.6); --auraB: rgba(124, 92, 255, 0);
+}
+.orb[data-state="speaking"] .orb-core { animation: breathe 1.8s ease-in-out infinite; }
+.orb[data-state="speaking"] .orb-glow { opacity: 0.6; }
+.orb[data-state="speaking"] .ripple { border-color: rgba(124, 92, 255, 0.5); }
+.orb[data-state="speaking"] .eq { opacity: 1; transform: scale(1); }
+.orb[data-state="speaking"] .eq i { animation: eq 0.9s ease-in-out infinite; }
+.orb[data-state="speaking"] .eq i:nth-child(1) { animation-delay: 0s; }
+.orb[data-state="speaking"] .eq i:nth-child(2) { animation-delay: 0.18s; }
+.orb[data-state="speaking"] .eq i:nth-child(3) { animation-delay: 0.36s; }
+.orb[data-state="speaking"] .eq i:nth-child(4) { animation-delay: 0.12s; }
+.orb[data-state="speaking"] .eq i:nth-child(5) { animation-delay: 0.30s; }
+
+@keyframes float { 0%,100% { transform: translateY(3px) scale(0.9); } 50% { transform: translateY(-3px) scale(0.94); } }
+@keyframes pulse { 0%,100% { transform: scale(0.9); } 50% { transform: scale(1.02); } }
+@keyframes breathe { 0%,100% { transform: scale(0.96); } 50% { transform: scale(1.06); } }
+@keyframes aura-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes ripple-out { 0% { opacity: 0.55; transform: scale(0.6); } 80% { opacity: 0; } 100% { opacity: 0; transform: scale(1.5); } }
+@keyframes eq { 0%,100% { height: 12px; } 50% { height: 38px; } }
+
+.status {
+  font-size: 14px;
+  color: var(--muted);
+  min-height: 20px;
+  text-align: center;
+}
+
+/* ---- Cards (English phrase aid) ---- */
+.cards { display: flex; flex-direction: column; gap: 8px; }
+.phrase-card {
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+  animation: rise 240ms ease;
+}
+.phrase-card .pc-label { font-size: 11px; color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
+.phrase-card .pc-en { font-size: 18px; font-weight: 600; line-height: 1.35; }
+.phrase-card .pc-hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ---- Transcript ---- */
+.transcript {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 2px 8px;
+}
+.bubble { max-width: 88%; padding: 9px 13px; border-radius: 14px; font-size: 14px; line-height: 1.45; }
+.bubble.sarah { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+.bubble.user { align-self: flex-end; background: var(--user); border-bottom-right-radius: 4px; }
+.bubble.interim { opacity: 0.55; font-style: italic; }
+.bubble .en { color: var(--accent-2); font-weight: 600; }
+
+/* ---- Controls ---- */
+.controls { flex: 0 0 auto; display: flex; gap: 10px; padding-top: 4px; }
+.btn {
+  flex: 1;
+  padding: 15px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 14px;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.primary:active { transform: scale(0.99); }
+.btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+.error {
+  background: #3a1d1d;
+  border: 1px solid #6b2b2b;
+  color: #ffb4b4;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+}
