@@ -108,6 +108,7 @@ async function start() {
 
 function stop() {
   running = false;
+  stopThinkingCue();
   try { stopPlayback(); } catch {}
   try { if (recorder && recorder.state !== 'inactive') recorder.stop(); } catch {}
   try { micStream && micStream.getTracks().forEach((t) => t.stop()); } catch {}
@@ -185,6 +186,7 @@ function tick() {
 // ============================================================ listening
 function enterListening() {
   if (!running) return;
+  stopThinkingCue();
   mode = 'listening';
   hasSpoken = false;
   voiceFrames = 0;
@@ -207,6 +209,7 @@ function endUserTurn() {
   mode = 'thinking';
   setOrb('thinking');
   setStatus('Samajh rahi hoon…');
+  startThinkingCue();
   const rec = recorder;
   if (rec && rec.state !== 'inactive') {
     rec.onstop = () => {
@@ -222,6 +225,7 @@ async function handleNoInput() {
   noInputTries++;
   // discard the empty recording
   mode = 'thinking';
+  startThinkingCue();
   try { if (recorder && recorder.state !== 'inactive') { recorder.onstop = null; recorder.stop(); } } catch {}
 
   if (noInputTries > 2) {
@@ -307,6 +311,7 @@ async function speak(reply) {
   bargedIn = false;
   bargeFrames = 0;
   mode = 'speaking';
+  stopThinkingCue();
   speakStartTs = performance.now();
   setOrb('speaking');
   setStatus('JBIQ bol rahi hain…');
@@ -364,11 +369,40 @@ function doBargeIn() {
   enterListening();
 }
 
+// ============================================================ thinking cue
+// A soft, subtle chime that repeats while JBIQ is processing — so the learner
+// knows it heard them and is working, even before the reply audio starts.
+let thinkingTimer = null;
+function startThinkingCue() {
+  stopThinkingCue();
+  if (!audioCtx || !playGain) return;
+  const blip = () => {
+    if (!audioCtx || audioCtx.state !== 'running') return;
+    const t = audioCtx.currentTime;
+    const o = audioCtx.createOscillator();
+    const o2 = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine'; o.frequency.value = 660;   // gentle
+    o2.type = 'sine'; o2.frequency.value = 988;  // soft fifth above
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.05, t + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
+    o.connect(g); o2.connect(g); g.connect(playGain);
+    o.start(t); o2.start(t); o.stop(t + 0.45); o2.stop(t + 0.45);
+  };
+  blip();
+  thinkingTimer = setInterval(blip, 1500);
+}
+function stopThinkingCue() {
+  if (thinkingTimer) { clearInterval(thinkingTimer); thinkingTimer = null; }
+}
+
 // ============================================================ conversation kickoff
 async function greet() {
   mode = 'thinking';
   setOrb('thinking');
   setStatus('JBIQ aa rahi hain…');
+  startThinkingCue();
   try {
     const { reply, state } = await chat([], sessionState);
     sessionState = state;
@@ -496,6 +530,7 @@ function updateLessonLabel() {
 }
 
 function fail(msg) {
+  stopThinkingCue();
   setOrb('idle');
   const div = document.createElement('div');
   div.className = 'error';

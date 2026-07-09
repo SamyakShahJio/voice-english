@@ -18,7 +18,7 @@ import { Readable } from 'node:stream';
 
 import { transcribe, ttsStream } from './elevenlabs.js';
 import { runTurn } from './claude.js';
-import { stripMarkers } from './text.js';
+import { speechText } from './text.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -78,7 +78,7 @@ app.post('/api/chat', async (req, res) => {
 app.post('/api/tts', async (req, res) => {
   try {
     const raw = (req.body && req.body.text) || '';
-    const text = stripMarkers(raw).trim();
+    const text = speechText(raw).trim();
     if (!text) return res.status(400).json({ error: 'empty text' });
 
     const upstream = await ttsStream(text);
