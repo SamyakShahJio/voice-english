@@ -1,14 +1,14 @@
 :root {
-  --bg: #0e0f13;
-  --surface: #17181f;
-  --surface-2: #1f212b;
-  --text: #f3f4f8;
-  --muted: #9aa0b0;
+  --bg: #f5f6fa;
+  --surface: #ffffff;
+  --surface-2: #eef0f6;
+  --text: #1a1c22;
+  --muted: #6b7180;
   --accent: #7c5cff;
-  --accent-2: #a58bff;
-  --user: #2a2d3a;
-  --good: #35d0a5;
-  --line: #262835;
+  --accent-2: #6a44e8;
+  --user: #ece8ff;
+  --good: #1f9e7c;
+  --line: #e4e6ee;
 }
 
 * { box-sizing: border-box; }
@@ -220,9 +220,9 @@ html, body {
 .btn:disabled { opacity: 0.5; cursor: default; }
 
 .error {
-  background: #3a1d1d;
-  border: 1px solid #6b2b2b;
-  color: #ffb4b4;
+  background: #fdecec;
+  border: 1px solid #f2b8b8;
+  color: #b42318;
   padding: 10px 12px;
   border-radius: 10px;
   font-size: 13px;
