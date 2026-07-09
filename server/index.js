@@ -23,6 +23,24 @@ import { stripMarkers } from './text.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+// Password gate (HTTP Basic Auth). Active only when APP_PASSWORD is set — so
+// local dev is frictionless, but a deployed instance is protected. Any
+// username works; only the password is checked. /api/health stays open so
+// hosting platforms can run their uptime checks.
+const APP_PASSWORD = process.env.APP_PASSWORD;
+if (APP_PASSWORD) {
+  app.use((req, res, next) => {
+    if (req.path === '/api/health') return next();
+    const [scheme, encoded] = (req.headers.authorization || '').split(' ');
+    if (scheme === 'Basic' && encoded) {
+      const pass = Buffer.from(encoded, 'base64').toString().split(':').slice(1).join(':');
+      if (pass === APP_PASSWORD) return next();
+    }
+    res.set('WWW-Authenticate', 'Basic realm="JBIQ"');
+    return res.status(401).send('Authentication required');
+  });
+}
+
 app.use(express.json({ limit: '1mb' }));
 // Audio arrives as a raw binary body.
 app.use('/api/stt', express.raw({ type: () => true, limit: '25mb' }));

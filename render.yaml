@@ -1,0 +1,31 @@
+# Render deploy (https://render.com) — a host that runs the Node server so the
+# API keys stay server-side (set as env vars below, NOT in the repo).
+#
+# Steps:
+#   1. Push this repo to GitHub (private is fine).
+#   2. Render dashboard → New → Blueprint → pick this repo.
+#   3. When prompted, paste the three secret values (sync:false ones).
+#   4. Deploy. Your URL will prompt for the password (APP_PASSWORD).
+services:
+  - type: web
+    name: jbiq-voice-english
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false            # paste in dashboard
+      - key: ELEVENLABS_API_KEY
+        sync: false            # paste in dashboard
+      - key: APP_PASSWORD
+        sync: false            # paste in dashboard (your access password)
+      - key: CLAUDE_MODEL
+        value: claude-sonnet-5
+      - key: JBIQ_VOICE_ID
+        value: Ms9OTvWb99V6DwRHZn6q
+      - key: TTS_MODEL
+        value: eleven_multilingual_v2
+      - key: STT_MODEL
+        value: scribe_v1
