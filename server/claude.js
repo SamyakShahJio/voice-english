@@ -6,7 +6,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { buildSystemPrompt, BEGIN_SESSION_TOOL } from './prompts/system.js';
+import { STATIC_SYSTEM, phasePrompt, BEGIN_SESSION_TOOL } from './prompts/system.js';
 import { PACKS } from './prompts/scenarios.js';
 
 let client;
@@ -68,16 +68,22 @@ export async function runTurn(messages, state = { phase: 'onboarding' }) {
     });
   }
 
-  // The tool is only offered during onboarding / topic switches.
-  const tools = [BEGIN_SESSION_TOOL];
-
   // Up to two hops: first response may be a tool call, second is the spoken turn.
   for (let hop = 0; hop < 3; hop++) {
+    // The begin_session tool is only relevant during onboarding. Not offering
+    // it during teaching means every teaching turn is a single, fast call.
+    const tools = workingState.phase === 'onboarding' ? [BEGIN_SESSION_TOOL] : undefined;
+
     const res = await api.messages.create({
       model: MODEL(),
       max_tokens: MAX_TOKENS,
-      system: buildSystemPrompt(workingState),
-      tools,
+      // Cache the static persona/guardrails prefix so it isn't re-processed
+      // every turn — cuts time-to-first-token. Phase part stays dynamic.
+      system: [
+        { type: 'text', text: STATIC_SYSTEM, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: phasePrompt(workingState) },
+      ],
+      ...(tools ? { tools } : {}),
       messages: convo,
     });
 

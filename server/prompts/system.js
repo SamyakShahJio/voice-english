@@ -107,8 +107,15 @@ Run the teaching method (frame → model → practise → feedback → recap). K
  *     scenarioTitle, customTitle, goal }
  */
 export function buildSystemPrompt(state = {}) {
-  const phase = state.phase === 'teaching' ? teachingPhase(state) : onboardingPhase();
-  return [PERSONA, GUARDRAILS, phase].join('\n\n');
+  return [STATIC_SYSTEM, phasePrompt(state)].join('\n\n');
+}
+
+/** The unchanging prefix (persona + guardrails) — cached across turns. */
+export const STATIC_SYSTEM = [PERSONA, GUARDRAILS].join('\n\n');
+
+/** The phase-specific part (onboarding vs teaching) — varies per turn. */
+export function phasePrompt(state = {}) {
+  return state.phase === 'teaching' ? teachingPhase(state) : onboardingPhase();
 }
 
 /** Tool JBIQ calls to lock in the situation + scenario during onboarding. */

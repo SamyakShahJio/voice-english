@@ -94,6 +94,7 @@ async function start() {
   src.connect(analyser); // analyser is a sink; not routed to speakers
   playGain = audioCtx.createGain();
   playGain.connect(audioCtx.destination);
+  loadThinkingChime();
 
   recMime = pickMime();
   running = true;
@@ -370,31 +371,37 @@ function doBargeIn() {
 }
 
 // ============================================================ thinking cue
-// A soft, subtle chime that repeats while JBIQ is processing — so the learner
-// knows it heard them and is working, even before the reply audio starts.
-let thinkingTimer = null;
+// A soft two-note bell (public/thinking.wav) that repeats gently while JBIQ is
+// processing — so the learner knows it heard them and is working, even before
+// the reply audio starts.
+let thinkingBuffer = null, thinkingTimer = null, thinkingSources = [];
+async function loadThinkingChime() {
+  if (thinkingBuffer || !audioCtx) return;
+  try {
+    const res = await fetch('/thinking.wav');
+    thinkingBuffer = await audioCtx.decodeAudioData(await res.arrayBuffer());
+  } catch { /* no chime if it fails to load */ }
+}
+function playThinkingOnce() {
+  if (!audioCtx || audioCtx.state !== 'running' || !thinkingBuffer) return;
+  const src = audioCtx.createBufferSource();
+  const g = audioCtx.createGain();
+  g.gain.value = 0.6; // subtle
+  src.buffer = thinkingBuffer;
+  src.connect(g); g.connect(playGain);
+  src.onended = () => { thinkingSources = thinkingSources.filter((s) => s !== src); };
+  src.start();
+  thinkingSources.push(src);
+}
 function startThinkingCue() {
   stopThinkingCue();
-  if (!audioCtx || !playGain) return;
-  const blip = () => {
-    if (!audioCtx || audioCtx.state !== 'running') return;
-    const t = audioCtx.currentTime;
-    const o = audioCtx.createOscillator();
-    const o2 = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    o.type = 'sine'; o.frequency.value = 660;   // gentle
-    o2.type = 'sine'; o2.frequency.value = 988;  // soft fifth above
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.05, t + 0.04);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
-    o.connect(g); o2.connect(g); g.connect(playGain);
-    o.start(t); o2.start(t); o.stop(t + 0.45); o2.stop(t + 0.45);
-  };
-  blip();
-  thinkingTimer = setInterval(blip, 1500);
+  playThinkingOnce();
+  thinkingTimer = setInterval(playThinkingOnce, 2200);
 }
 function stopThinkingCue() {
   if (thinkingTimer) { clearInterval(thinkingTimer); thinkingTimer = null; }
+  thinkingSources.forEach((s) => { try { s.onended = null; s.stop(); } catch {} });
+  thinkingSources = [];
 }
 
 // ============================================================ conversation kickoff

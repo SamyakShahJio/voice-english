@@ -35,12 +35,20 @@ export async function transcribe(audioBuffer, mimeType = 'audio/webm') {
   }
 
   const data = await res.json();
+  // Scribe injects audio-event annotations like "[background sound]", "[music]",
+  // "(laughter)" into the transcript. That's backend metadata — never show it to
+  // the user or feed it to the model. Strip bracketed/parenthesised tags.
+  const clean = (s) =>
+    String(s || '')
+      .replace(/[\[(（【][^\])）】]*[\])）】]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   return {
-    text: (data.text || '').trim(),
+    text: clean(data.text),
     language: data.language_code || 'unknown',
-    // Keep only real words with their confidence — used for pronunciation feedback.
+    // Keep only real words (drop spacing + any leftover annotation tokens).
     words: (data.words || [])
-      .filter((w) => w.type === 'word')
+      .filter((w) => w.type === 'word' && !/^[\[(（【]/.test(w.text))
       .map((w) => ({ text: w.text, logprob: w.logprob })),
   };
 }
