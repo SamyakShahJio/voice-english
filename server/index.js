@@ -17,8 +17,13 @@ import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 
 import { transcribe, ttsStream } from './elevenlabs.js';
+import { sarvamTTS, sarvamSTT, sarvamConfigured } from './sarvam.js';
 import { runTurn } from './claude.js';
 import { speechText } from './text.js';
+
+// auto = ElevenLabs, fall back to Sarvam only when EL quota runs out.
+// Force one provider with VOICE_PROVIDER=elevenlabs | sarvam.
+const VOICE_PROVIDER = () => process.env.VOICE_PROVIDER || 'auto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -47,18 +52,27 @@ app.use('/api/stt', express.raw({ type: () => true, limit: '25mb' }));
 
 app.use(express.static(join(__dirname, '..', 'public')));
 
-/** Speech -> text. */
+/** Speech -> text. ElevenLabs Scribe, with Sarvam as the quota fallback. */
 app.post('/api/stt', async (req, res) => {
+  if (!req.body || !req.body.length) {
+    return res.status(400).json({ error: 'empty audio body' });
+  }
+  const mime = req.headers['content-type'] || 'audio/webm';
+  const provider = VOICE_PROVIDER();
+
+  if (provider === 'sarvam' && sarvamConfigured()) {
+    try { return res.json(await sarvamSTT(req.body, mime)); }
+    catch (e) { console.error('[stt sarvam]', e.message); return res.status(502).json({ error: e.message }); }
+  }
   try {
-    if (!req.body || !req.body.length) {
-      return res.status(400).json({ error: 'empty audio body' });
-    }
-    const mime = req.headers['content-type'] || 'audio/webm';
-    const result = await transcribe(req.body, mime);
-    res.json(result);
+    res.json(await transcribe(req.body, mime));
   } catch (err) {
     console.error('[stt]', err.message);
     const quota = /quota/i.test(err.message);
+    if (quota && provider === 'auto' && sarvamConfigured()) {
+      try { console.warn('[stt] EL quota — Sarvam fallback'); return res.json(await sarvamSTT(req.body, mime)); }
+      catch (e2) { console.error('[stt sarvam fallback]', e2.message); }
+    }
     res.status(quota ? 429 : 502).json({ error: err.message, code: quota ? 'quota_exceeded' : 'upstream' });
   }
 });
@@ -75,13 +89,24 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-/** Text -> streamed speech. Expects one sentence/phrase at a time. */
+/** Text -> speech. ElevenLabs (streamed), with Sarvam as the quota fallback. */
 app.post('/api/tts', async (req, res) => {
-  try {
-    const raw = (req.body && req.body.text) || '';
-    const text = speechText(raw).trim();
-    if (!text) return res.status(400).json({ error: 'empty text' });
+  const raw = (req.body && req.body.text) || '';
+  const text = speechText(raw).trim();
+  if (!text) return res.status(400).json({ error: 'empty text' });
+  const provider = VOICE_PROVIDER();
 
+  const sendSarvam = async () => {
+    const buf = await sarvamTTS(text);
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.end(buf);
+  };
+
+  if (provider === 'sarvam' && sarvamConfigured()) {
+    try { return await sendSarvam(); }
+    catch (e) { console.error('[tts sarvam]', e.message); return res.status(502).json({ error: e.message }); }
+  }
+  try {
     const upstream = await ttsStream(text);
     res.setHeader('Content-Type', 'audio/mpeg');
     // Pipe ElevenLabs' streaming body straight through to the browser.
@@ -89,6 +114,10 @@ app.post('/api/tts', async (req, res) => {
   } catch (err) {
     console.error('[tts]', err.message);
     const quota = /quota/i.test(err.message);
+    if (quota && provider === 'auto' && sarvamConfigured()) {
+      try { console.warn('[tts] EL quota — Sarvam fallback'); return await sendSarvam(); }
+      catch (e2) { console.error('[tts sarvam fallback]', e2.message); }
+    }
     res.status(quota ? 429 : 502).json({ error: err.message, code: quota ? 'quota_exceeded' : 'upstream' });
   }
 });
@@ -100,6 +129,8 @@ app.get('/api/health', (_req, res) => {
     voice: process.env.JBIQ_VOICE_ID || 'Ms9OTvWb99V6DwRHZn6q',
     hasAnthropic: !!process.env.ANTHROPIC_API_KEY,
     hasElevenLabs: !!process.env.ELEVENLABS_API_KEY,
+    voiceProvider: process.env.VOICE_PROVIDER || 'auto',
+    sarvamBackup: sarvamConfigured() ? (process.env.SARVAM_VOICE || 'ritu') : false,
   });
 });
 
