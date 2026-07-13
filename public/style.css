@@ -229,7 +229,9 @@ body[data-mode="voice"] .cards { display: none; }
 .bubble .en { color: var(--accent-2); font-weight: 600; }
 
 /* ---- Controls ---- */
-.controls { flex: 0 0 auto; display: flex; gap: 10px; padding-top: 4px; }
+/* margin-top:auto pins the buttons to the bottom in ALL modes — even when the
+   transcript (the usual flex-filler) is hidden in cards/voice mode. */
+.controls { flex: 0 0 auto; margin-top: auto; display: flex; gap: 10px; padding-top: 4px; }
 .btn {
   flex: 1;
   padding: 15px;
