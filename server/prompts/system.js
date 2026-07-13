@@ -127,6 +127,19 @@ export function phasePrompt(state = {}) {
   return state.phase === 'teaching' ? teachingPhase(state) : onboardingPhase();
 }
 
+/**
+ * Appended in VOICE-ONLY mode — the learner cannot see the screen at all, so
+ * everything must be carried by voice and the teaching style changes.
+ */
+export const VOICE_ONLY_ADDENDUM = `# VOICE-ONLY MODE — the learner CANNOT see any screen
+Assume the learner is listening with their eyes closed. There is NO screen, NO cards, NO transcript.
+- NEVER refer to anything visual: no "dekhiye", "screen pe", "neeche", "card mein", "jaisa likha hai". Nothing is shown.
+- SAY each target English phrase clearly, then REPEAT it once, a little slower, so every word is catchable.
+- Break a longer phrase into 2–3 word chunks; have them repeat chunk by chunk, then the whole line.
+- For a tricky word, say it syllable by syllable aloud (e.g. "com — pen — say — shun").
+- Give every cue, correction and next step out loud. Confirm verbally what to say next.
+- One instruction at a time, then pause and let them speak. Keep it warm and unhurried.`;
+
 /** Tool JBIQ calls to lock in the situation + scenario during onboarding. */
 export const BEGIN_SESSION_TOOL = {
   name: 'begin_session',

@@ -80,8 +80,8 @@ app.post('/api/stt', async (req, res) => {
 /** One conversational turn with JBIQ. */
 app.post('/api/chat', async (req, res) => {
   try {
-    const { messages = [], state = { phase: 'onboarding' } } = req.body || {};
-    const { reply, speech, state: nextState } = await runTurn(messages, state);
+    const { messages = [], state = { phase: 'onboarding' }, mode = 'full' } = req.body || {};
+    const { reply, speech, state: nextState } = await runTurn(messages, state, mode);
     res.json({ reply, speech, state: nextState });
   } catch (err) {
     console.error('[chat]', err.message);

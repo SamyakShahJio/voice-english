@@ -42,6 +42,32 @@ html, body {
 .brand { font-size: 20px; font-weight: 600; letter-spacing: 0.2px; }
 .lesson { font-size: 13px; color: var(--muted); text-align: right; }
 
+/* ---- Mode tabs ---- */
+.modes {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  align-self: center;
+}
+.modes a {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 6px 14px;
+  border-radius: 999px;
+  transition: background 140ms ease, color 140ms ease;
+}
+.modes a.active { background: var(--accent); color: #fff; }
+
+/* Mode-based visibility */
+body[data-mode="cards"] .transcript { display: none; }
+body[data-mode="voice"] .transcript,
+body[data-mode="voice"] .cards { display: none; }
+
 /* ---- Stage / orb ---- */
 .stage {
   flex: 0 0 auto;

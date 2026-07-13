@@ -6,7 +6,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { STATIC_SYSTEM, phasePrompt, BEGIN_SESSION_TOOL } from './prompts/system.js';
+import { STATIC_SYSTEM, phasePrompt, VOICE_ONLY_ADDENDUM, BEGIN_SESSION_TOOL } from './prompts/system.js';
 import { PACKS } from './prompts/scenarios.js';
 
 let client;
@@ -49,7 +49,7 @@ function splitDual(full) {
  * @param {object} state     current session state (see system.js)
  * @returns {Promise<{reply:string, state:object}>}
  */
-export async function runTurn(messages, state = { phase: 'onboarding' }) {
+export async function runTurn(messages, state = { phase: 'onboarding' }, mode = 'full') {
   const api = anthropic();
   let workingState = { ...state };
 
@@ -81,7 +81,7 @@ export async function runTurn(messages, state = { phase: 'onboarding' }) {
       // every turn — cuts time-to-first-token. Phase part stays dynamic.
       system: [
         { type: 'text', text: STATIC_SYSTEM, cache_control: { type: 'ephemeral' } },
-        { type: 'text', text: phasePrompt(workingState) },
+        { type: 'text', text: phasePrompt(workingState) + (mode === 'voice' ? '\n\n' + VOICE_ONLY_ADDENDUM : '') },
       ],
       ...(tools ? { tools } : {}),
       messages: convo,

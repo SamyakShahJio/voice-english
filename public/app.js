@@ -32,6 +32,14 @@ let sessionState = { phase: 'onboarding' };
 let running = false;
 let voiceDown = false; // set when ElevenLabs quota / voice is unavailable
 
+// UI mode: full (transcript + full phrase cards) | cards (cue-only, no
+// transcript) | voice (no screen at all — JBIQ carries everything by voice).
+const MODE = (() => {
+  const m = new URLSearchParams(location.search).get('mode');
+  return ['full', 'cards', 'voice'].includes(m) ? m : 'full';
+})();
+document.body.dataset.mode = MODE;
+
 // ---- audio graph ----
 let audioCtx, analyser, micStream, playGain, timeData;
 let recorder, recChunks = [], recMime = 'audio/webm';
@@ -47,6 +55,11 @@ let currentSource = null, bargedIn = false;
 // ============================================================ boot
 el.start.addEventListener('click', start);
 el.stop.addEventListener('click', stop);
+
+// Highlight the active mode tab.
+document.querySelectorAll('#modeTabs a').forEach((a) => {
+  if (a.dataset.mode === MODE) a.classList.add('active');
+});
 
 // Mic is on by default — begin the moment the page loads.
 start();
@@ -444,7 +457,7 @@ async function chat(msgs, state) {
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages: msgs, state }),
+    body: JSON.stringify({ messages: msgs, state, mode: MODE }),
   });
   if (!res.ok) throw new Error('chat ' + res.status);
   return res.json();
@@ -494,6 +507,7 @@ function setStatus(t) { el.status.textContent = t; }
 function setOrb(state) { el.orb.dataset.state = state; }
 
 function addBubble(who, text) {
+  if (MODE !== 'full') return; // transcript only in full mode
   const div = document.createElement('div');
   div.className = 'bubble ' + who;
   if (who === 'jbiq') {
@@ -516,15 +530,26 @@ function addBubble(who, text) {
 }
 
 function renderCards(reply) {
+  if (MODE === 'voice') return; // no screen aid at all
   const phrases = extractPhrases(reply);
   el.cards.innerHTML = '';
   phrases.forEach((p) => {
     const card = document.createElement('div');
     card.className = 'phrase-card';
-    card.innerHTML =
-      `<div class="pc-label">JBIQ ke baad boliye</div>` +
-      `<div class="pc-en">${esc(p)}</div>` +
-      `<div class="pc-hint">Ise dohraiye</div>`;
+    if (MODE === 'cards') {
+      // directional cue only — the opening + shape, not the whole line
+      const words = p.split(/\s+/);
+      const cue = words.slice(0, 3).join(' ') + (words.length > 3 ? ' …' : '');
+      card.innerHTML =
+        `<div class="pc-label">Aapko yeh kehna hai</div>` +
+        `<div class="pc-en">${esc(cue)}</div>` +
+        `<div class="pc-hint">${words.length} words · JBIQ ke baad boliye</div>`;
+    } else {
+      card.innerHTML =
+        `<div class="pc-label">JBIQ ke baad boliye</div>` +
+        `<div class="pc-en">${esc(p)}</div>` +
+        `<div class="pc-hint">Ise dohraiye</div>`;
+    }
     el.cards.appendChild(card);
   });
 }
