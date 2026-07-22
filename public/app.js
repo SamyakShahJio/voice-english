@@ -32,7 +32,7 @@ const el = {
   shell: document.getElementById('shell'), useCases: document.getElementById('useCases'),
   wordDay: document.getElementById('wordDay'), cards: document.getElementById('cards'),
   drafts: document.getElementById('drafts'), transcript: document.getElementById('transcript'),
-  streak: document.getElementById('streak'), reset: document.getElementById('resetBtn'),
+  demo: document.getElementById('demoToggle'),
   start: document.getElementById('startBtn'), stop: document.getElementById('stopBtn'),
   photo: document.getElementById('photoBtn'), photoInput: document.getElementById('photoInput'),
 };
@@ -100,7 +100,18 @@ let currentSource = null, bargedIn = false;
 // ============================================================ boot
 el.start.addEventListener('click', start);
 el.stop.addEventListener('click', stop);
-el.reset.addEventListener('click', () => { localStorage.removeItem('jbiq_profile'); location.href = location.pathname + location.search; });
+// Demo toggle: jump between first-time (New) and returning user.
+el.demo.querySelector('[data-demo="new"]').classList.toggle('on', !session.profile.returning);
+el.demo.querySelector('[data-demo="ret"]').classList.toggle('on', session.profile.returning);
+el.demo.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-demo]'); if (!b) return;
+  if (b.dataset.demo === 'new') { localStorage.removeItem('jbiq_profile'); }
+  else {
+    saveProfile({ returning: true, proficiency: 'some', language: 'hi-IN', streakDays: 3,
+      lastActiveDate: today, lastSummary: '"Ask for a raise" par kaam kiya', useCase: 'english' });
+  }
+  location.href = location.pathname + location.search;
+});
 el.photo.addEventListener('click', () => el.photoInput.click());
 el.photoInput.addEventListener('change', onPhoto);
 document.querySelectorAll('#modeTabs a').forEach((a) => {

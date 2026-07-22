@@ -339,3 +339,8 @@ body[data-mode="cards"] .wordday .wd-word { font-size: 32px; }
 body[data-mode="cards"] .phrase-card { text-align: center; padding: 16px; }
 body[data-mode="cards"] .phrase-card .pc-hint { display: none; }
 body[data-mode="cards"] .phrase-card .pc-en { font-size: 22px; }
+
+/* Demo toggle (prototype affordance): first-time vs returning user */
+.demo { display: flex; gap: 2px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 2px; }
+.demo button { font-size: 11px; font-weight: 600; color: var(--muted); background: none; border: none; border-radius: 999px; padding: 4px 10px; cursor: pointer; }
+.demo button.on { background: var(--accent); color: #fff; }
