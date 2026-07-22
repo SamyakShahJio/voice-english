@@ -320,3 +320,22 @@ body[data-mode="voice"] .cards { display: none; }
 body[data-mode="voice"] .shell,
 body[data-mode="voice"] .transcript { display: none; }
 body[data-mode="cards"] .transcript { display: none; }
+
+/* ============ CUES-ONLY = "glance & recall": screen only hints ============ */
+/* Tiles: icon + name only, compact — no taglines/badges to read. */
+body[data-mode="cards"] .usecase .uc-tag,
+body[data-mode="cards"] .usecase .uc-badge { display: none; }
+body[data-mode="cards"] .usecase { padding: 14px 12px; text-align: center; }
+body[data-mode="cards"] .usecase .uc-icon { font-size: 26px; }
+body[data-mode="cards"] .usecase .uc-name { font-size: 13px; margin-top: 6px; }
+body[data-mode="cards"] .usecase.soon { opacity: 0.5; }
+/* Word of the day: just the word, big and centred — no meaning/example. */
+body[data-mode="cards"] .wordday { text-align: center; padding: 20px; }
+body[data-mode="cards"] .wordday .wd-mean,
+body[data-mode="cards"] .wordday .wd-ex,
+body[data-mode="cards"] .wordday .wd-dots { display: none; }
+body[data-mode="cards"] .wordday .wd-word { font-size: 32px; }
+/* Phrase cue: a single keyword chip, airy. */
+body[data-mode="cards"] .phrase-card { text-align: center; padding: 16px; }
+body[data-mode="cards"] .phrase-card .pc-hint { display: none; }
+body[data-mode="cards"] .phrase-card .pc-en { font-size: 22px; }
