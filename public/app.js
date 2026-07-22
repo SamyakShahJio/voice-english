@@ -1,83 +1,110 @@
 /**
- * voice-english client
- * --------------------
- * Fully voice-driven. No buttons to progress a lesson — the mic and an
- * energy-based VAD decide when the learner has finished a turn, then:
- *   record -> /api/stt -> /api/chat (JBIQ) -> /api/tts -> play -> listen again
- * Supports barge-in (start speaking to interrupt JBIQ).
+ * JBIQ — Jobs, Careers & Skills — voice-first client.
+ * Voice carries intent + dialogue; the screen renders what the conversation
+ * produced (use-case cards, word of the day, phrase cues, drafts). Screen never
+ * initiates. Three UI densities (full / cards / voice) × zero/returning state.
  */
 
 // ---- tunables ----
-const SILENCE_MS = 900;       // trailing silence that ends a turn
-const SPEECH_ONSET_MS = 150;  // sustained voice needed to count as "speaking"
-const NO_INPUT_MS = 9000;     // silence before a gentle re-prompt
-const BARGE_MIN_MS = 400;     // sustained voice needed to interrupt JBIQ
-const BARGE_GUARD_MS = 500;   // ignore mic for this long after JBIQ starts
-const ENABLE_BARGE_IN = true;
+const SILENCE_MS = 900, SPEECH_ONSET_MS = 150, NO_INPUT_MS = 9000;
+const BARGE_MIN_MS = 400, BARGE_GUARD_MS = 500, ENABLE_BARGE_IN = true;
+
+const SUPPORTED_LANGS = ['hi-IN','ta-IN','bn-IN','te-IN','mr-IN','gu-IN','kn-IN','ml-IN','pa-IN','od-IN'];
+
+const USE_CASES = [
+  { id: 'english',       icon: '🗣️', name: 'English Learning', tag: 'Bol-chaal ki English, real situations', live: true },
+  { id: 'interview',     icon: '💼', name: 'Interview Prep',    tag: 'Mock interviews, confident answers', live: false },
+  { id: 'govtexam',      icon: '📚', name: 'Govt-Exam Prep',    tag: 'Sahi exam dhoondho, tayari karo', live: false },
+  { id: 'microlearning', icon: '⚡', name: 'Micro-Learning',    tag: 'Roz 5 minute, ek nayi skill', live: false },
+];
+
+const WORDS = [
+  { word: 'Confident', mean: 'aatmavishwaas se bhara', ex: 'She looked confident in the meeting.' },
+  { word: 'Grateful',  mean: 'shukraguzaar / aabhaari', ex: 'I am grateful for your help.' },
+  { word: 'Deadline',  mean: 'kaam poora karne ki aakhri taareekh', ex: 'The deadline is on Friday.' },
+  { word: 'Polite',    mean: 'vinamr / tehzeeb waala', ex: 'Please be polite to the customer.' },
+  { word: 'Available', mean: 'uplabdh / khaali (time)', ex: 'Are you available tomorrow?' },
+];
 
 // ---- element refs ----
 const el = {
-  orb: document.getElementById('orb'),
-  status: document.getElementById('status'),
-  cards: document.getElementById('cards'),
-  transcript: document.getElementById('transcript'),
-  lesson: document.getElementById('lessonLabel'),
-  start: document.getElementById('startBtn'),
-  stop: document.getElementById('stopBtn'),
+  orb: document.getElementById('orb'), status: document.getElementById('status'),
+  shell: document.getElementById('shell'), useCases: document.getElementById('useCases'),
+  wordDay: document.getElementById('wordDay'), cards: document.getElementById('cards'),
+  drafts: document.getElementById('drafts'), transcript: document.getElementById('transcript'),
+  streak: document.getElementById('streak'), reset: document.getElementById('resetBtn'),
+  start: document.getElementById('startBtn'), stop: document.getElementById('stopBtn'),
+  photo: document.getElementById('photoBtn'), photoInput: document.getElementById('photoInput'),
 };
 
-// ---- session state ----
-const messages = [];                 // [{role, content}] sent to /api/chat
-let sessionState = { phase: 'onboarding' };
-let running = false;
-let voiceDown = false; // set when ElevenLabs quota / voice is unavailable
-
-// UI mode: full (transcript + full phrase cards) | cards (cue-only, no
-// transcript) | voice (no screen at all — JBIQ carries everything by voice).
+// ---- mode ----
 const MODE = (() => {
   const m = new URLSearchParams(location.search).get('mode');
-  return ['full', 'cards', 'voice'].includes(m) ? m : 'full';
+  return ['full','cards','voice'].includes(m) ? m : 'full';
 })();
 document.body.dataset.mode = MODE;
 
-// ---- audio graph ----
-let audioCtx, analyser, micStream, playGain, timeData;
-let recorder, recChunks = [], recMime = 'audio/webm';
+// ---- profile (localStorage) + session ----
+function loadProfile() { try { return JSON.parse(localStorage.getItem('jbiq_profile') || 'null'); } catch { return null; } }
+function saveProfile(p) { try { localStorage.setItem('jbiq_profile', JSON.stringify(p)); } catch {} }
+function daysBetween(a, b) { return Math.round((Date.parse(b) - Date.parse(a)) / 86400000); }
 
-// ---- VAD bookkeeping ----
-let mode = 'idle';                   // idle | listening | speaking
-let noiseFloor = 0.006, speechThreshold = 0.015, bargeThreshold = 0.03;
+const stored = loadProfile();
+const today = new Date().toISOString().slice(0, 10);
+let profile = stored ? { ...stored } : { streakDays: 0, language: 'hi-IN' };
+if (stored) {
+  const d = daysBetween(stored.lastActiveDate || today, today);
+  if (d === 1) profile.streakDays = (stored.streakDays || 1) + 1;
+  else if (d > 1) profile.streakDays = 1; // streak reset after a gap
+} else {
+  profile.streakDays = 1;
+}
+profile.lastActiveDate = today;
+
+let session = {
+  phase: 'orientation',
+  language: profile.language || 'hi-IN',
+  proficiency: profile.proficiency || null,
+  profile: stored ? {
+    returning: true, name: profile.name, proficiency: profile.proficiency,
+    language: profile.language, streakDays: profile.streakDays, lastSummary: profile.lastSummary,
+  } : { returning: false },
+};
+let messages = [];
+let running = false, voiceDown = false;
+
+function persist() {
+  profile.language = session.language;
+  profile.proficiency = session.proficiency || profile.proficiency;
+  profile.useCase = session.useCase || profile.useCase;
+  if (session.scenarioTitle) profile.lastSummary = `"${session.scenarioTitle}" par kaam kiya`;
+  saveProfile(profile);
+}
+
+// ---- audio graph / VAD ----
+let audioCtx, analyser, micStream, playGain, timeData, recorder, recChunks = [], recMime = 'audio/webm';
+let mode = 'idle', noiseFloor = 0.006, speechThreshold = 0.015, bargeThreshold = 0.03;
 let hasSpoken = false, voiceFrames = 0, bargeFrames = 0;
-let listenStartTs = 0, lastVoiceTs = 0, speakStartTs = 0;
-let noInputTries = 0;
+let listenStartTs = 0, lastVoiceTs = 0, speakStartTs = 0, noInputTries = 0;
 let currentSource = null, bargedIn = false;
 
 // ============================================================ boot
 el.start.addEventListener('click', start);
 el.stop.addEventListener('click', stop);
-
-// Highlight the active mode tab.
-document.querySelectorAll('#modeTabs a').forEach((a) => {
-  if (a.dataset.mode === MODE) a.classList.add('active');
-});
-
-// Mic is on by default — begin the moment the page loads.
+el.reset.addEventListener('click', () => { localStorage.removeItem('jbiq_profile'); location.href = location.pathname + location.search; });
+el.photo.addEventListener('click', () => el.photoInput.click());
+el.photoInput.addEventListener('change', onPhoto);
+document.querySelectorAll('#modeTabs a').forEach((a) => { if (a.dataset.mode === MODE) a.classList.add('active'); });
+if (session.profile.returning && profile.streakDays) { el.streak.hidden = false; el.streak.textContent = `🔥 ${profile.streakDays} din`; }
+renderUseCases();
 start();
 
-// Browsers may create the AudioContext suspended until a user gesture. The mic
-// is already live; we just need one interaction to unlock audio playback.
 function ensureAudioRunning() {
   if (audioCtx.state === 'running') return Promise.resolve();
   setStatus('Sunne ke liye taiyaar — kahin bhi tap karein');
   return new Promise((resolve) => {
-    const go = async () => {
-      window.removeEventListener('pointerdown', go);
-      window.removeEventListener('keydown', go);
-      try { await audioCtx.resume(); } catch {}
-      resolve();
-    };
-    window.addEventListener('pointerdown', go);
-    window.addEventListener('keydown', go);
+    const go = async () => { window.removeEventListener('pointerdown', go); window.removeEventListener('keydown', go); try { await audioCtx.resume(); } catch {} resolve(); };
+    window.addEventListener('pointerdown', go); window.addEventListener('keydown', go);
   });
 }
 
@@ -86,35 +113,18 @@ async function start() {
   el.start.disabled = true;
   setStatus('Microphone allow kar rahe hain…');
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
-  } catch (err) {
-    fail('Microphone allow karna zaroori hai. Browser settings mein permission dijiye.');
-    el.start.disabled = false;
-    return;
-  }
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  } catch { fail('Microphone allow karna zaroori hai. Browser settings mein permission dijiye.'); el.start.disabled = false; return; }
 
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   try { await audioCtx.resume(); } catch {}
   const src = audioCtx.createMediaStreamSource(micStream);
-  analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 1024;
-  timeData = new Float32Array(analyser.fftSize);
-  src.connect(analyser); // analyser is a sink; not routed to speakers
-  playGain = audioCtx.createGain();
-  playGain.connect(audioCtx.destination);
+  analyser = audioCtx.createAnalyser(); analyser.fftSize = 1024; timeData = new Float32Array(analyser.fftSize);
+  src.connect(analyser);
+  playGain = audioCtx.createGain(); playGain.connect(audioCtx.destination);
   loadThinkingChime();
 
-  recMime = pickMime();
-  running = true;
-  el.start.hidden = true;
-  el.stop.hidden = false;
-
+  recMime = pickMime(); running = true; el.start.hidden = true; el.stop.hidden = false;
   requestAnimationFrame(tick);
   await ensureAudioRunning();
   await calibrate();
@@ -122,470 +132,279 @@ async function start() {
 }
 
 function stop() {
-  running = false;
-  stopThinkingCue();
+  running = false; stopThinkingCue();
   try { stopPlayback(); } catch {}
   try { if (recorder && recorder.state !== 'inactive') recorder.stop(); } catch {}
   try { micStream && micStream.getTracks().forEach((t) => t.stop()); } catch {}
   try { audioCtx && audioCtx.close(); } catch {}
-  mode = 'idle';
-  setOrb('idle');
-  setStatus('Rok diya. Dobara shuru karein?');
-  el.stop.hidden = true;
-  el.start.hidden = false;
-  el.start.disabled = false;
+  mode = 'idle'; setOrb('idle'); setStatus('Rok diya. Dobara shuru karein?');
+  el.stop.hidden = true; el.start.hidden = false; el.start.disabled = false;
 }
 
 function pickMime() {
-  const cands = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
-  return cands.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || 'audio/webm';
+  const c = ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus'];
+  return c.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || 'audio/webm';
 }
 
-// ============================================================ calibration
 async function calibrate() {
-  setStatus('Ek pal… awaaz set kar rahe hain');
-  const samples = [];
-  const until = performance.now() + 450;
-  await new Promise((resolve) => {
-    const id = setInterval(() => {
-      samples.push(readRMS());
-      if (performance.now() > until) { clearInterval(id); resolve(); }
-    }, 20);
-  });
+  setStatus('Ek pal…'); const samples = []; const until = performance.now() + 450;
+  await new Promise((r) => { const id = setInterval(() => { samples.push(readRMS()); if (performance.now() > until) { clearInterval(id); r(); } }, 20); });
   const avg = samples.reduce((a, b) => a + b, 0) / Math.max(samples.length, 1);
-  noiseFloor = avg || 0.006;
-  speechThreshold = Math.max(0.012, noiseFloor * 3.5);
-  bargeThreshold = Math.max(0.025, noiseFloor * 6);
+  noiseFloor = avg || 0.006; speechThreshold = Math.max(0.012, noiseFloor * 3.5); bargeThreshold = Math.max(0.025, noiseFloor * 6);
 }
 
-// ============================================================ VAD loop
-function readRMS() {
-  analyser.getFloatTimeDomainData(timeData);
-  let sum = 0;
-  for (let i = 0; i < timeData.length; i++) sum += timeData[i] * timeData[i];
-  return Math.sqrt(sum / timeData.length);
-}
+function readRMS() { analyser.getFloatTimeDomainData(timeData); let s = 0; for (let i = 0; i < timeData.length; i++) s += timeData[i] * timeData[i]; return Math.sqrt(s / timeData.length); }
 
 function tick() {
-  if (!running) return;
-  requestAnimationFrame(tick);
-  const rms = readRMS();
-  const now = performance.now();
-
+  if (!running) return; requestAnimationFrame(tick);
+  const rms = readRMS(), now = performance.now();
   if (mode === 'listening') {
     el.orb.style.setProperty('--level', Math.min(rms / 0.12, 1).toFixed(3));
-    if (rms > speechThreshold) {
-      lastVoiceTs = now;
-      voiceFrames++;
-      if (!hasSpoken && voiceFrames * 16 >= SPEECH_ONSET_MS) hasSpoken = true;
-    } else {
-      voiceFrames = 0;
-    }
-    if (hasSpoken && now - lastVoiceTs > SILENCE_MS) {
-      endUserTurn();
-    } else if (!hasSpoken && now - listenStartTs > NO_INPUT_MS) {
-      handleNoInput();
-    }
+    if (rms > speechThreshold) { lastVoiceTs = now; voiceFrames++; if (!hasSpoken && voiceFrames * 16 >= SPEECH_ONSET_MS) hasSpoken = true; }
+    else voiceFrames = 0;
+    if (hasSpoken && now - lastVoiceTs > SILENCE_MS) endUserTurn();
+    else if (!hasSpoken && now - listenStartTs > NO_INPUT_MS) handleNoInput();
   } else if (mode === 'speaking' && ENABLE_BARGE_IN) {
     if (now - speakStartTs > BARGE_GUARD_MS) {
-      if (rms > bargeThreshold) {
-        bargeFrames++;
-        if (bargeFrames * 16 >= BARGE_MIN_MS) doBargeIn();
-      } else {
-        bargeFrames = 0;
-      }
+      if (rms > bargeThreshold) { bargeFrames++; if (bargeFrames * 16 >= BARGE_MIN_MS) doBargeIn(); }
+      else bargeFrames = 0;
     }
   }
 }
 
-// ============================================================ listening
 function enterListening() {
   if (!running || voiceDown) return;
-  stopThinkingCue();
-  mode = 'listening';
-  hasSpoken = false;
-  voiceFrames = 0;
-  listenStartTs = lastVoiceTs = performance.now();
-  setOrb('listening');
-  setStatus('Boliye… sun rahi hoon');
-
+  stopThinkingCue(); mode = 'listening'; hasSpoken = false; voiceFrames = 0;
+  listenStartTs = lastVoiceTs = performance.now(); setOrb('listening'); setStatus('Boliye… sun rahi hoon');
   recChunks = [];
-  try {
-    recorder = new MediaRecorder(micStream, { mimeType: recMime });
-  } catch {
-    recorder = new MediaRecorder(micStream);
-  }
+  try { recorder = new MediaRecorder(micStream, { mimeType: recMime }); } catch { recorder = new MediaRecorder(micStream); }
   recorder.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
   recorder.start(100);
 }
 
 function endUserTurn() {
   if (mode !== 'listening') return;
-  mode = 'thinking';
-  setOrb('thinking');
-  setStatus('Samajh rahi hoon…');
-  startThinkingCue();
+  mode = 'thinking'; setOrb('thinking'); setStatus('Samajh rahi hoon…'); startThinkingCue();
   const rec = recorder;
-  if (rec && rec.state !== 'inactive') {
-    rec.onstop = () => {
-      const blob = new Blob(recChunks, { type: recMime });
-      handleUserTurn(blob);
-    };
-    rec.stop();
-  }
+  if (rec && rec.state !== 'inactive') { rec.onstop = () => handleUserTurn(new Blob(recChunks, { type: recMime })); rec.stop(); }
 }
 
 async function handleNoInput() {
-  if (mode !== 'listening') return;
-  noInputTries++;
-  // discard the empty recording
-  mode = 'thinking';
-  startThinkingCue();
+  if (mode !== 'listening') return; noInputTries++; mode = 'thinking';
   try { if (recorder && recorder.state !== 'inactive') { recorder.onstop = null; recorder.stop(); } } catch {}
-
-  if (noInputTries > 2) {
-    setStatus('Jab taiyaar hon, boliye. Mic chaalu hai.');
-    noInputTries = 0;
-    enterListening();
-    return;
-  }
-  // one gentle, un-stored re-prompt from JBIQ
-  const transient = messages.concat({
-    role: 'user',
-    content: '[learner abhi tak chup hai — unhe pyaar se, ek chhoti line mein dobara bulao]',
-  });
-  try {
-    const { reply, speech, state } = await chat(transient, sessionState);
-    sessionState = state;
-    addBubble('jbiq', reply);
-    await speak(speech || reply);
-  } catch (err) {
-    console.error(err);
-  }
+  if (noInputTries > 2) { setStatus('Jab taiyaar hon, boliye.'); noInputTries = 0; enterListening(); return; }
+  startThinkingCue();
+  const transient = messages.concat({ role: 'user', content: '[learner abhi tak chup hai — unhe pyaar se ek chhoti line mein dobara bulao]' });
+  try { const { reply, speech, state } = await chat(transient, session); session = state; addBubble('jbiq', reply); await speak(speech || reply); } catch (e) { console.error(e); }
   if (running) enterListening();
 }
 
-// ============================================================ one turn
+// ============================================================ turns
 async function handleUserTurn(blob) {
-  if (blob.size < 1200) { // basically silence / a click
-    if (running) enterListening();
-    return;
-  }
+  if (blob.size < 1200) { if (running) enterListening(); return; }
   let stt;
-  try {
-    stt = await transcribe(blob);
-  } catch (err) {
-    console.error(err);
-    if (err && err.quota) { voiceError(); return; }
-    setStatus('STT mein dikkat aayi, dobara boliye.');
-    if (running) enterListening();
-    return;
-  }
+  try { stt = await transcribe(blob); }
+  catch (err) { console.error(err); if (err && err.quota) { voiceError(); return; } setStatus('Sunne mein dikkat, dobara boliye.'); if (running) enterListening(); return; }
   const text = (stt.text || '').trim();
   if (!text) { if (running) enterListening(); return; }
-
-  addBubble('user', text);
+  // multi-Indic: adopt the detected language if supported
+  if (stt.language && SUPPORTED_LANGS.includes(stt.language)) session.language = stt.language;
   noInputTries = 0;
-
   const modelContent = text + confidenceNote(stt.words || []);
-  messages.push({ role: 'user', content: modelContent });
+  await sendToBrain(text, modelContent);
+}
 
+/** From taps / photo (no STT). */
+async function sendToBrain(displayText, modelContent) {
+  if (displayText) addBubble('user', displayText);
+  messages.push({ role: 'user', content: modelContent || displayText });
+  mode = 'thinking'; setOrb('thinking'); setStatus('Samajh rahi hoon…'); startThinkingCue();
   let reply, speech, state;
-  try {
-    ({ reply, speech, state } = await chat(messages, sessionState));
-  } catch (err) {
-    console.error(err);
-    setStatus('JBIQ se connect nahi ho paaya, dobara koshish.');
-    if (running) enterListening();
-    return;
-  }
-  sessionState = state;
-  updateLessonLabel();
+  try { ({ reply, speech, state } = await chat(messages, session)); }
+  catch (err) { console.error(err); stopThinkingCue(); setStatus('JBIQ se connect nahi ho paaya.'); if (running) enterListening(); return; }
+  session = state; persist();
   messages.push({ role: 'assistant', content: reply });
-
   addBubble('jbiq', reply);
-  renderCards(reply);
+  renderScreen(reply);
   await speak(speech || reply);
   if (running) enterListening();
 }
 
-/** Words the STT was least sure about — likely pronunciation trouble. */
 function confidenceNote(words) {
-  const low = words
-    .filter((w) => w.logprob < -1.2 && /[a-zA-Z]/.test(w.text))
-    .map((w) => w.text.replace(/[^a-zA-Z']/g, ''))
-    .filter(Boolean)
-    .slice(0, 6);
-  if (!low.length) return '';
-  return `\n\n[coach note — learner's least-clear words (possible pronunciation issues): ${low.join(', ')}]`;
+  const low = words.filter((w) => w.logprob < -1.2 && /[a-zA-Z]/.test(w.text)).map((w) => w.text.replace(/[^a-zA-Z']/g, '')).filter(Boolean).slice(0, 6);
+  return low.length ? `\n\n[coach note — learner's least-clear words: ${low.join(', ')}]` : '';
 }
 
 // ============================================================ speaking (TTS)
-async function speak(reply) {
-  const chunks = splitIntoSpeakables(reply);
+async function speak(text) {
+  const chunks = splitIntoSpeakables(text);
   if (!chunks.length) return;
-  bargedIn = false;
-  bargeFrames = 0;
-  mode = 'speaking';
-  stopThinkingCue();
-  speakStartTs = performance.now();
-  setOrb('speaking');
-  setStatus('JBIQ bol rahi hain…');
-
-  const clips = new Array(chunks.length);
-  clips[0] = fetchClip(chunks[0]);
+  bargedIn = false; bargeFrames = 0; mode = 'speaking'; stopThinkingCue();
+  speakStartTs = performance.now(); setOrb('speaking'); setStatus('JBIQ bol rahi hain…');
+  const clips = new Array(chunks.length); clips[0] = fetchClip(chunks[0]);
   for (let i = 0; i < chunks.length; i++) {
-    if (i + 1 < chunks.length) clips[i + 1] = fetchClip(chunks[i + 1]); // prefetch next
-    let buf;
-    try { buf = await clips[i]; }
-    catch (err) { if (err && err.quota) { voiceError(); return; } console.error('tts', err); continue; }
+    if (i + 1 < chunks.length) clips[i + 1] = fetchClip(chunks[i + 1]);
+    let buf; try { buf = await clips[i]; } catch (err) { if (err && err.quota) { voiceError(); return; } console.error('tts', err); continue; }
     if (bargedIn || !running) break;
-    // Reset the guard window at each chunk boundary so mid-sentence echo
-    // doesn't accumulate false barge-ins.
-    speakStartTs = performance.now();
-    await playBuffer(buf);
+    speakStartTs = performance.now(); await playBuffer(buf);
     if (bargedIn || !running) break;
   }
 }
-
 async function fetchClip(text) {
-  const res = await fetch('/api/tts', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
-  });
+  const res = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, language: session.language }) });
   if (!res.ok) throw Object.assign(new Error('tts ' + res.status), { quota: res.status === 429 });
-  const arr = await res.arrayBuffer();
-  return await audioCtx.decodeAudioData(arr);
+  return await audioCtx.decodeAudioData(await res.arrayBuffer());
 }
+function playBuffer(buf) { return new Promise((resolve) => { const s = audioCtx.createBufferSource(); s.buffer = buf; s.connect(playGain); s.onended = () => { if (currentSource === s) currentSource = null; resolve(); }; currentSource = s; s.start(); }); }
+function stopPlayback() { if (currentSource) { try { currentSource.onended = null; currentSource.stop(); } catch {} currentSource = null; } }
+function doBargeIn() { if (mode !== 'speaking') return; bargedIn = true; stopPlayback(); enterListening(); }
 
-function playBuffer(buf) {
-  return new Promise((resolve) => {
-    const source = audioCtx.createBufferSource();
-    source.buffer = buf;
-    source.connect(playGain);
-    source.onended = () => { if (currentSource === source) currentSource = null; resolve(); };
-    currentSource = source;
-    source.start();
-  });
-}
-
-function stopPlayback() {
-  if (currentSource) {
-    try { currentSource.onended = null; currentSource.stop(); } catch {}
-    currentSource = null;
-  }
-}
-
-function doBargeIn() {
-  if (mode !== 'speaking') return;
-  bargedIn = true;
-  stopPlayback();
-  // caller's speak() loop will exit; handleUserTurn then calls enterListening.
-  // But greet()/re-prompt also await speak — so enter listening here too.
-  enterListening();
-}
-
-// ============================================================ thinking cue
-// A soft two-note bell (public/thinking.wav) that repeats gently while JBIQ is
-// processing — so the learner knows it heard them and is working, even before
-// the reply audio starts.
+// thinking chime
 let thinkingBuffer = null, thinkingTimer = null, thinkingSources = [];
-async function loadThinkingChime() {
-  if (thinkingBuffer || !audioCtx) return;
-  try {
-    const res = await fetch('/thinking.wav');
-    thinkingBuffer = await audioCtx.decodeAudioData(await res.arrayBuffer());
-  } catch { /* no chime if it fails to load */ }
-}
+async function loadThinkingChime() { if (thinkingBuffer || !audioCtx) return; try { thinkingBuffer = await audioCtx.decodeAudioData(await (await fetch('/thinking.wav')).arrayBuffer()); } catch {} }
 function playThinkingOnce() {
   if (!audioCtx || audioCtx.state !== 'running' || !thinkingBuffer) return;
-  const src = audioCtx.createBufferSource();
-  const g = audioCtx.createGain();
-  g.gain.value = 0.28; // very subtle
-  src.buffer = thinkingBuffer;
-  src.connect(g); g.connect(playGain);
-  src.onended = () => { thinkingSources = thinkingSources.filter((s) => s !== src); };
-  src.start();
-  thinkingSources.push(src);
+  const s = audioCtx.createBufferSource(), g = audioCtx.createGain(); g.gain.value = 0.28; s.buffer = thinkingBuffer;
+  s.connect(g); g.connect(playGain); s.onended = () => { thinkingSources = thinkingSources.filter((x) => x !== s); }; s.start(); thinkingSources.push(s);
 }
-function startThinkingCue() {
-  stopThinkingCue();
-  playThinkingOnce();
-  thinkingTimer = setInterval(playThinkingOnce, 2800);
-}
-function stopThinkingCue() {
-  if (thinkingTimer) { clearInterval(thinkingTimer); thinkingTimer = null; }
-  thinkingSources.forEach((s) => { try { s.onended = null; s.stop(); } catch {} });
-  thinkingSources = [];
-}
+function startThinkingCue() { stopThinkingCue(); playThinkingOnce(); thinkingTimer = setInterval(playThinkingOnce, 2800); }
+function stopThinkingCue() { if (thinkingTimer) { clearInterval(thinkingTimer); thinkingTimer = null; } thinkingSources.forEach((s) => { try { s.onended = null; s.stop(); } catch {} }); thinkingSources = []; }
 
-// ============================================================ conversation kickoff
+// ============================================================ kickoff
 async function greet() {
-  mode = 'thinking';
-  setOrb('thinking');
-  setStatus('JBIQ aa rahi hain…');
-  startThinkingCue();
+  mode = 'thinking'; setOrb('thinking'); setStatus('JBIQ aa rahi hain…'); startThinkingCue();
   try {
-    const { reply, speech, state } = await chat([], sessionState);
-    sessionState = state;
-    updateLessonLabel();
+    const { reply, speech, state } = await chat([], session);
+    session = state; persist();
     messages.push({ role: 'assistant', content: reply });
-    addBubble('jbiq', reply);
-    renderCards(reply);
+    addBubble('jbiq', reply); renderScreen(reply);
     await speak(speech || reply);
-  } catch (err) {
-    console.error(err);
-    fail('JBIQ se connect nahi ho paaya. Server chal raha hai? .env mein keys hain?');
-    return;
-  }
+  } catch (err) { console.error(err); fail('JBIQ se connect nahi ho paaya. Server chal raha hai?'); return; }
   if (running) enterListening();
 }
 
 // ============================================================ API
 async function transcribe(blob) {
-  const res = await fetch('/api/stt', {
-    method: 'POST',
-    headers: { 'Content-Type': blob.type || recMime },
-    body: blob,
-  });
+  const res = await fetch('/api/stt', { method: 'POST', headers: { 'Content-Type': blob.type || recMime }, body: blob });
   if (!res.ok) throw Object.assign(new Error('stt ' + res.status), { quota: res.status === 429 });
   return res.json();
 }
-
 async function chat(msgs, state) {
-  const res = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages: msgs, state, mode: MODE }),
-  });
+  const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: msgs, state, mode: MODE }) });
   if (!res.ok) throw new Error('chat ' + res.status);
   return res.json();
 }
 
+// ============================================================ photo → English
+async function onPhoto(e) {
+  const file = e.target.files && e.target.files[0]; el.photoInput.value = '';
+  if (!file) return;
+  setStatus('Photo padh rahi hoon…'); setOrb('thinking'); startThinkingCue();
+  try {
+    const b64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(file); });
+    const r = await fetch('/api/vision', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageBase64: b64, mediaType: file.type || 'image/jpeg' }) });
+    const { extracted } = await r.json();
+    stopThinkingCue();
+    if (!extracted || /NO_ENGLISH/.test(extracted)) { await sendToBrain('📷 (photo bheji)', '[Learner ne ek photo bheji, par usme koi English text nahi mila. Unse poochho ki wo kya seekhna chahte hain.]'); return; }
+    await sendToBrain('📷 (photo bheji)', `[Learner ne ek photo bheji. Usme yeh English likhi hai:\n"""${extracted}"""\nIse unki bhasha mein samjhaiye — matlab, aur 1-2 mushkil words. Unko padhna sikhaiye.]`);
+  } catch (err) { console.error(err); stopThinkingCue(); setStatus('Photo padhne mein dikkat.'); if (running) enterListening(); }
+}
+
 // ============================================================ text helpers
 const EN_MARKER = /\[\[EN:\s*([\s\S]*?)\]\]/g;
+const DRAFT_MARKER = /\[\[DRAFT:\s*([\s\S]*?)\]\]/g;
 
-function splitIntoSpeakables(reply) {
-  // protect [[EN: ...]] so sentence-splitting never cuts inside a phrase
+function splitIntoSpeakables(text) {
   const held = [];
-  const protectedText = reply.replace(EN_MARKER, (m) => {
-    held.push(m);
-    return `\uE000${held.length - 1}\uE000`;
-  });
-  const parts = protectedText
-    .split(/(?<=[।.!?])\s+/)
-    .map((p) => p.replace(/\uE000(\d+)\uE000/g, (_x, i) => held[+i]))
-    .map((p) => p.trim())
-    .filter((p) => /[a-zA-Zऀ-ॿ]/.test(p)); // must contain real letters
-  // merge tiny fragments into the previous chunk
-  const merged = [];
-  for (const p of parts) {
-    if (merged.length && p.replace(EN_MARKER, '$1').length < 14) {
-      merged[merged.length - 1] += ' ' + p;
-    } else {
-      merged.push(p);
-    }
-  }
-  return merged;
+  const protectedText = text.replace(EN_MARKER, (m) => { held.push(m); return `${held.length - 1}`; }).replace(DRAFT_MARKER, ' ');
+  const restore = (p) => p.replace(/(\d+)/g, (_x, i) => held[+i] !== undefined ? held[+i] : _x);
+  return protectedText.split(/(?<=[।.!?])\s+/).map(restore).map((p) => p.trim()).filter((p) => /[a-zA-Zऀ-ॿ஀-௿ঀ-৿]/.test(p));
 }
-
-function extractPhrases(reply) {
-  const out = [];
-  let m;
-  EN_MARKER.lastIndex = 0;
-  while ((m = EN_MARKER.exec(reply))) out.push(m[1].trim());
-  return out;
-}
-
-function esc(s) {
-  return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-}
+function extractPhrases(t) { const o = []; let m; EN_MARKER.lastIndex = 0; while ((m = EN_MARKER.exec(t))) o.push(m[1].trim()); return o; }
+function extractDrafts(t) { const o = []; let m; DRAFT_MARKER.lastIndex = 0; while ((m = DRAFT_MARKER.exec(t))) o.push(m[1].trim()); return o; }
+function esc(s) { return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
 
 // ============================================================ UI
 function setStatus(t) { el.status.textContent = t; }
-function setOrb(state) { el.orb.dataset.state = state; }
+function setOrb(s) { el.orb.dataset.state = s; }
 
 function addBubble(who, text) {
-  if (MODE !== 'full') return; // transcript only in full mode
-  const div = document.createElement('div');
-  div.className = 'bubble ' + who;
+  if (MODE !== 'full') return;
+  const div = document.createElement('div'); div.className = 'bubble ' + who;
   if (who === 'jbiq') {
-    // show markers as highlighted English, strip the wrapper
-    let html = '';
-    let last = 0, m;
-    EN_MARKER.lastIndex = 0;
-    while ((m = EN_MARKER.exec(text))) {
-      html += esc(text.slice(last, m.index));
-      html += `<span class="en">${esc(m[1].trim())}</span>`;
-      last = m.index + m[0].length;
-    }
-    html += esc(text.slice(last));
-    div.innerHTML = html;
-  } else {
-    div.textContent = text;
-  }
-  el.transcript.appendChild(div);
-  el.transcript.scrollTop = el.transcript.scrollHeight;
+    let html = '', last = 0, m; const t = text.replace(DRAFT_MARKER, '').trim(); EN_MARKER.lastIndex = 0;
+    while ((m = EN_MARKER.exec(t))) { html += esc(t.slice(last, m.index)); html += `<span class="en">${esc(m[1].trim())}</span>`; last = m.index + m[0].length; }
+    html += esc(t.slice(last)); div.innerHTML = html || esc(t);
+  } else div.textContent = text;
+  el.transcript.appendChild(div); el.transcript.scrollTop = el.transcript.scrollHeight;
+}
+
+function renderUseCases() {
+  el.useCases.innerHTML = USE_CASES.map((u) => `
+    <button class="usecase ${u.live ? 'live' : 'soon'}" data-uc="${u.id}">
+      <span class="uc-badge">${u.live ? 'Live' : 'Soon'}</span>
+      <div class="uc-icon">${u.icon}</div>
+      <div class="uc-name">${u.name}</div>
+      <div class="uc-tag">${u.tag}</div>
+    </button>`).join('');
+  el.useCases.querySelectorAll('.usecase').forEach((b) => b.addEventListener('click', () => {
+    const uc = USE_CASES.find((x) => x.id === b.dataset.uc);
+    sendToBrain(uc.name, uc.live ? `Main ${uc.name} karna chahta hoon.` : `Mujhe ${uc.name} chahiye — kya yeh available hai?`);
+  }));
+}
+
+let wdIndex = 0;
+function renderWordDay() {
+  wdIndex = new Date().getDate() % WORDS.length; const w = WORDS[wdIndex];
+  el.wordDay.hidden = false;
+  el.wordDay.innerHTML = `
+    <div class="wd-label">Word of the day</div>
+    <div class="wd-word">${esc(w.word)}</div>
+    <div class="wd-mean">${esc(w.mean)}</div>
+    <div class="wd-ex">"${esc(w.ex)}"</div>
+    <div class="wd-dots">${WORDS.map((_, i) => `<i class="${i === wdIndex ? 'on' : ''}"></i>`).join('')}</div>`;
+  el.wordDay.onclick = () => sendToBrain('Aaj ka word sikhaiye', `Mujhe aaj ka "word of the day" — ${w.word} — sikhaiye.`);
 }
 
 function renderCards(reply) {
-  if (MODE === 'voice') return; // no screen aid at all
-  const phrases = extractPhrases(reply);
-  el.cards.innerHTML = '';
+  if (MODE === 'voice') return;
+  const phrases = extractPhrases(reply); el.cards.innerHTML = '';
   phrases.forEach((p) => {
-    const card = document.createElement('div');
-    card.className = 'phrase-card';
+    const card = document.createElement('div'); card.className = 'phrase-card';
     if (MODE === 'cards') {
-      // directional cue only — the opening + shape, not the whole line
-      const words = p.split(/\s+/);
-      const cue = words.slice(0, 3).join(' ') + (words.length > 3 ? ' …' : '');
-      card.innerHTML =
-        `<div class="pc-label">Aapko yeh kehna hai</div>` +
-        `<div class="pc-en">${esc(cue)}</div>` +
-        `<div class="pc-hint">${words.length} words · JBIQ ke baad boliye</div>`;
+      const w = p.split(/\s+/); const cue = w.slice(0, 3).join(' ') + (w.length > 3 ? ' …' : '');
+      card.innerHTML = `<div class="pc-label">Aapko yeh kehna hai</div><div class="pc-en">${esc(cue)}</div><div class="pc-hint">${w.length} words · JBIQ ke baad</div>`;
     } else {
-      card.innerHTML =
-        `<div class="pc-label">JBIQ ke baad boliye</div>` +
-        `<div class="pc-en">${esc(p)}</div>` +
-        `<div class="pc-hint">Ise dohraiye</div>`;
+      card.innerHTML = `<div class="pc-label">JBIQ ke baad boliye</div><div class="pc-en">${esc(p)}</div><div class="pc-hint">Ise dohraiye</div>`;
     }
     el.cards.appendChild(card);
   });
 }
 
-function updateLessonLabel() {
-  if (sessionState.phase === 'teaching') {
-    el.lesson.textContent = [sessionState.situationName, sessionState.scenarioTitle]
-      .filter(Boolean)
-      .join(' · ');
-  } else {
-    el.lesson.textContent = '';
-  }
+function renderDrafts(reply) {
+  const drafts = extractDrafts(reply);
+  if (!drafts.length) { el.drafts.innerHTML = ''; return; }
+  el.drafts.innerHTML = drafts.map((d) => `<div class="draft"><div class="df-label">Draft — tap to copy</div><div class="df-body">${esc(d)}</div><button class="df-copy">📋 Copy</button></div>`).join('');
+  el.drafts.querySelectorAll('.draft').forEach((node, i) => node.querySelector('.df-copy').addEventListener('click', () => { navigator.clipboard && navigator.clipboard.writeText(drafts[i]); node.querySelector('.df-copy').textContent = '✓ Copied'; }));
 }
 
-// Voice (ElevenLabs) unavailable — usually quota. Fail loudly, not silently.
+function renderScreen(reply) {
+  const phase = session.phase;
+  el.useCases.style.display = phase === 'orientation' ? '' : 'none';
+  if (phase === 'english_onboarding') renderWordDay(); else el.wordDay.hidden = true;
+  if (phase === 'english_teaching') renderCards(reply); else el.cards.innerHTML = '';
+  renderDrafts(reply);
+  el.photo.hidden = !(session.useCase === 'english');
+}
+
 function voiceError() {
-  if (voiceDown) return;
-  voiceDown = true;
-  stopThinkingCue();
-  try { stopPlayback(); } catch {}
+  if (voiceDown) return; voiceDown = true; stopThinkingCue(); try { stopPlayback(); } catch {}
   try { if (recorder && recorder.state !== 'inactive') { recorder.onstop = null; recorder.stop(); } } catch {}
-  mode = 'idle';
-  setOrb('idle');
-  setStatus('Awaaz abhi uplabdh nahi hai');
-  el.cards.innerHTML =
-    '<div class="error">🔇 Awaaz abhi uplabdh nahi hai. Thodi der baad dobara koshish karein.</div>';
+  mode = 'idle'; setOrb('idle'); setStatus('Awaaz abhi uplabdh nahi hai');
+  el.drafts.innerHTML = '<div class="error">🔇 Awaaz abhi uplabdh nahi hai. Thodi der baad dobara koshish karein.</div>';
 }
-
 function fail(msg) {
-  stopThinkingCue();
-  setOrb('idle');
-  const div = document.createElement('div');
-  div.className = 'error';
-  div.textContent = msg;
-  el.transcript.appendChild(div);
-  setStatus('');
-  el.start.hidden = false;
-  el.stop.hidden = true;
+  stopThinkingCue(); setOrb('idle');
+  const d = document.createElement('div'); d.className = 'error'; d.textContent = msg; el.transcript.appendChild(d);
+  setStatus(''); el.start.hidden = false; el.stop.hidden = true;
 }

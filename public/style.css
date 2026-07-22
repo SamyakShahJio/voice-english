@@ -255,3 +255,68 @@ body[data-mode="voice"] .cards { display: none; }
   border-radius: 10px;
   font-size: 13px;
 }
+
+/* ================= Jobs vertical additions ================= */
+.brandwrap { display: flex; flex-direction: column; }
+.vertical { font-size: 11px; color: var(--muted); letter-spacing: 0.4px; text-transform: uppercase; margin-top: 1px; }
+.topright { display: flex; align-items: center; gap: 8px; }
+.streak {
+  font-size: 12px; font-weight: 700; color: #b4530a;
+  background: #ffedd9; border: 1px solid #ffd8a8; border-radius: 999px; padding: 4px 10px;
+}
+.reset {
+  background: transparent; border: 1px solid var(--line); color: var(--muted);
+  border-radius: 999px; width: 30px; height: 30px; cursor: pointer; font-size: 15px;
+}
+
+/* screen shell */
+.shell { display: flex; flex-direction: column; gap: 10px; }
+
+/* use-case cards (choice among many = screen's job) */
+.usecases { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.usecase {
+  text-align: left; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 14px; padding: 12px 13px; cursor: pointer; position: relative;
+  transition: border-color 140ms ease, transform 100ms ease;
+}
+.usecase:hover { border-color: var(--accent); }
+.usecase:active { transform: scale(0.99); }
+.usecase .uc-icon { font-size: 22px; }
+.usecase .uc-name { font-size: 14px; font-weight: 600; margin-top: 6px; }
+.usecase .uc-tag { font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.35; }
+.usecase.soon { opacity: 0.72; }
+.usecase .uc-badge {
+  position: absolute; top: 10px; right: 10px; font-size: 9.5px; font-weight: 700;
+  color: var(--muted); background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 999px; padding: 2px 7px; text-transform: uppercase; letter-spacing: 0.4px;
+}
+.usecase.live .uc-badge { color: #1f9e7c; background: #e6f7f1; border-color: #b9ead9; }
+
+/* word of the day */
+.wordday {
+  background: linear-gradient(135deg, #efe9ff, #f6f2ff); border: 1px solid #e2d8ff;
+  border-radius: 16px; padding: 14px 16px;
+}
+.wordday .wd-label { font-size: 10.5px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.6px; }
+.wordday .wd-word { font-size: 24px; font-weight: 700; margin-top: 4px; }
+.wordday .wd-mean { font-size: 13px; color: var(--muted); margin-top: 3px; }
+.wordday .wd-ex { font-size: 13px; margin-top: 8px; font-style: italic; color: #4a4560; }
+.wordday .wd-dots { display: flex; gap: 5px; margin-top: 10px; }
+.wordday .wd-dots i { width: 6px; height: 6px; border-radius: 50%; background: #cdbdf5; display: inline-block; }
+.wordday .wd-dots i.on { background: var(--accent); }
+
+/* draft (email / whatsapp / translation output) */
+.draft {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px;
+  animation: rise 240ms ease;
+}
+.draft .df-label { font-size: 10.5px; font-weight: 700; color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.5px; }
+.draft .df-body { font-size: 14px; line-height: 1.5; white-space: pre-wrap; margin-top: 6px; }
+.draft .df-copy { margin-top: 8px; font-size: 12px; font-weight: 600; color: var(--accent); background: none; border: none; cursor: pointer; padding: 0; }
+
+.btn.icon { flex: 0 0 auto; width: 52px; font-size: 20px; background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
+
+/* mode visibility: voice = no screen; cards = no transcript */
+body[data-mode="voice"] .shell,
+body[data-mode="voice"] .transcript { display: none; }
+body[data-mode="cards"] .transcript { display: none; }

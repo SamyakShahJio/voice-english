@@ -1,12 +1,12 @@
 /**
  * Claude — JBIQ's brain. Runs one conversational turn:
- *  - builds the system prompt from the current session state,
- *  - lets JBIQ optionally call begin_session (the onboarding slot-fill tool),
- *  - returns her spoken reply plus any updated session state.
+ *  - builds the system prompt from session state (phase, language, memory),
+ *  - offers phase-appropriate tools (route / proficiency / begin_session),
+ *  - returns the spoken reply (Roman + native-script split) and updated state.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { STATIC_SYSTEM, phasePrompt, VOICE_ONLY_ADDENDUM, BEGIN_SESSION_TOOL } from './prompts/system.js';
+import { STATIC_SYSTEM, dynamicSystem, TOOLS } from './prompts/system.js';
 import { PACKS } from './prompts/scenarios.js';
 
 let client;
@@ -19,110 +19,120 @@ function anthropic() {
 }
 
 const MODEL = () => process.env.CLAUDE_MODEL || 'claude-sonnet-5';
-const MAX_TOKENS = 600; // short turns, but each is emitted twice (roman + Devanagari)
+const MAX_TOKENS = 700;
 
-/** Collapse Claude content blocks into plain text. */
-function textOf(content) {
-  return content
-    .filter((b) => b.type === 'text')
-    .map((b) => b.text)
-    .join(' ')
-    .trim();
-}
+const tool = (name) => TOOLS.find((t) => t.name === name);
 
 /**
- * JBIQ outputs each turn twice: the Roman/Latin half (shown on screen), then
- * `///SPOKEN///`, then the Devanagari half (spoken aloud so Hindi sounds
- * native). Split them; fall back to the same text for both if the marker is
- * missing.
+ * Photo-to-text: read an image and return the English text visible in it,
+ * verbatim (for JBIQ to then explain in the learner's language).
  */
+export async function readImage(base64, mediaType = 'image/jpeg') {
+  const api = anthropic();
+  const res = await api.messages.create({
+    model: MODEL(),
+    max_tokens: 500,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+          {
+            type: 'text',
+            text: 'Transcribe ALL the English text visible in this image, verbatim, preserving line breaks. If there is no English text, reply exactly "NO_ENGLISH". Output only the transcription, nothing else.',
+          },
+        ],
+      },
+    ],
+  });
+  return res.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+}
+
+function textOf(content) {
+  return content.filter((b) => b.type === 'text').map((b) => b.text).join(' ').trim();
+}
+
+/** Split "Roman ///SPOKEN/// native" into {reply (screen), speech (TTS)}. */
 function splitDual(full) {
-  const idx = full.indexOf('///SPOKEN///');
-  if (idx === -1) return { reply: full.trim(), speech: full.trim() };
-  const reply = full.slice(0, idx).trim();
-  const speech = full.slice(idx + '///SPOKEN///'.length).trim();
+  const i = full.indexOf('///SPOKEN///');
+  if (i === -1) return { reply: full.trim(), speech: full.trim() };
+  const reply = full.slice(0, i).trim();
+  const speech = full.slice(i + '///SPOKEN///'.length).trim();
   return { reply: reply || speech, speech: speech || reply };
 }
 
+/** Tools offered depend on the phase. */
+function toolsFor(state) {
+  if (state.phase === 'english_teaching') return [tool('begin_session')];
+  if (state.phase === 'english_onboarding') return [tool('set_proficiency'), tool('begin_session')];
+  return [tool('route_use_case')]; // orientation
+}
+
 /**
- * @param {Array}  messages  full conversation as [{role, content}] (content is string)
- * @param {object} state     current session state (see system.js)
- * @returns {Promise<{reply:string, state:object}>}
+ * @param {Array}  messages  [{role, content}] (content is a string)
+ * @param {object} state     session state (phase, useCase, language, proficiency, profile, situation…)
+ * @param {string} mode      full | cards | voice
  */
-export async function runTurn(messages, state = { phase: 'onboarding' }, mode = 'full') {
+export async function runTurn(messages, state = { phase: 'orientation' }, mode = 'full') {
   const api = anthropic();
-  let workingState = { ...state };
+  let s = { ...state };
+  if (!s.phase) s.phase = 'orientation';
 
-  // Convert simple string messages into Anthropic message blocks.
-  const convo = messages.map((m) => ({
-    role: m.role,
-    content: [{ type: 'text', text: m.content }],
-  }));
-
-  // First turn of a session: seed a control message so JBIQ greets and
-  // begins onboarding (Anthropic requires a leading user message).
+  const convo = messages.map((m) => ({ role: m.role, content: [{ type: 'text', text: m.content }] }));
   if (convo.length === 0) {
-    convo.push({
-      role: 'user',
-      content: [{ type: 'text', text: '[SESSION_START] — greet the learner in Hindi and begin onboarding.' }],
-    });
+    convo.push({ role: 'user', content: [{ type: 'text', text: '[SESSION_START] — greet and orient the learner.' }] });
   }
 
-  // Up to two hops: first response may be a tool call, second is the spoken turn.
-  for (let hop = 0; hop < 3; hop++) {
-    // The begin_session tool is only relevant during onboarding. Not offering
-    // it during teaching means every teaching turn is a single, fast call.
-    const tools = workingState.phase === 'onboarding' ? [BEGIN_SESSION_TOOL] : undefined;
-
+  for (let hop = 0; hop < 4; hop++) {
+    const tools = toolsFor(s).filter(Boolean);
     const res = await api.messages.create({
       model: MODEL(),
       max_tokens: MAX_TOKENS,
-      // Cache the static persona/guardrails prefix so it isn't re-processed
-      // every turn — cuts time-to-first-token. Phase part stays dynamic.
       system: [
         { type: 'text', text: STATIC_SYSTEM, cache_control: { type: 'ephemeral' } },
-        { type: 'text', text: phasePrompt(workingState) + (mode === 'voice' ? '\n\n' + VOICE_ONLY_ADDENDUM : '') },
+        { type: 'text', text: dynamicSystem(s, mode) },
       ],
-      ...(tools ? { tools } : {}),
+      ...(tools.length ? { tools } : {}),
       messages: convo,
     });
 
-    const toolUse = res.content.find((b) => b.type === 'tool_use');
-
-    if (toolUse && toolUse.name === 'begin_session') {
-      const input = toolUse.input || {};
-      const pack = PACKS[input.situationId];
-      workingState = {
-        ...workingState,
-        phase: 'teaching',
-        situationId: input.situationId,
-        scenarioId: input.scenarioId,
-        situationName: input.situationName || (pack && pack.name) || input.situationId,
-        scenarioTitle: input.scenarioTitle || input.scenarioId,
-        customTitle: pack && pack.scenarios[input.scenarioId] ? null : input.scenarioTitle,
-        goal: input.goal || workingState.goal || '',
-      };
-
-      // Feed the tool result back so JBIQ continues in the SAME logical turn,
-      // now under the teaching-phase system prompt.
+    const tu = res.content.find((b) => b.type === 'tool_use');
+    if (tu) {
+      let resultMsg = 'Done. Continue in the same turn.';
+      if (tu.name === 'route_use_case') {
+        const uc = (tu.input || {}).useCase;
+        s.useCase = uc;
+        if (uc === 'english') {
+          s.phase = 'english_onboarding';
+          resultMsg = 'Routed to English. Warmly begin onboarding now (gauge proficiency, offer activities).';
+        } else {
+          resultMsg = `"${uc}" is COMING SOON. Warmly say it is coming soon, that you will send a WhatsApp when ready, and offer to start English meanwhile.`;
+        }
+      } else if (tu.name === 'set_proficiency') {
+        s.proficiency = (tu.input || {}).level;
+        resultMsg = 'Proficiency noted. Continue — offer a first activity, tailored to it.';
+      } else if (tu.name === 'begin_session') {
+        const inp = tu.input || {};
+        const pack = PACKS[inp.situationId];
+        s = {
+          ...s,
+          phase: 'english_teaching',
+          situationId: inp.situationId,
+          scenarioId: inp.scenarioId,
+          situationName: inp.situationName || (pack && pack.name) || inp.situationId,
+          scenarioTitle: inp.scenarioTitle || inp.scenarioId,
+          customTitle: pack && pack.scenarios[inp.scenarioId] ? null : inp.scenarioTitle,
+          goal: inp.goal || s.goal || '',
+        };
+        resultMsg = 'Session locked. Confirm warmly and START teaching (frame + first phrase) now.';
+      }
       convo.push({ role: 'assistant', content: res.content });
-      convo.push({
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: toolUse.id,
-            content: 'Session locked. Now confirm warmly in Hindi and start teaching.',
-          },
-        ],
-      });
-      continue; // next hop produces the spoken reply
+      convo.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: tu.id, content: resultMsg }] });
+      continue;
     }
 
-    // No tool call → this is JBIQ's spoken turn.
     const { reply, speech } = splitDual(textOf(res.content) || 'Maaf kijiye, dobara boliye?');
-    return { reply, speech, state: workingState };
+    return { reply, speech, state: s };
   }
-
-  return { reply: 'Chaliye, English pe wapas aate hain.', speech: 'चलिए, इंग्लिश पे वापस आते हैं।', state: workingState };
+  return { reply: 'Chaliye, aage badhte hain.', speech: 'चलिए, आगे बढ़ते हैं।', state: s };
 }

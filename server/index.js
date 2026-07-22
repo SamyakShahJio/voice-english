@@ -18,7 +18,7 @@ import { Readable } from 'node:stream';
 
 import { transcribe, ttsStream } from './elevenlabs.js';
 import { sarvamTTS, sarvamSTT, sarvamConfigured } from './sarvam.js';
-import { runTurn } from './claude.js';
+import { runTurn, readImage } from './claude.js';
 import { speechText } from './text.js';
 
 // Default: Sarvam only (ElevenLabs quota ran out too often). Set
@@ -47,7 +47,7 @@ if (APP_PASSWORD) {
   });
 }
 
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '15mb' })); // photos (base64) go through /api/vision
 // Audio arrives as a raw binary body.
 app.use('/api/stt', express.raw({ type: () => true, limit: '25mb' }));
 
@@ -81,7 +81,7 @@ app.post('/api/stt', async (req, res) => {
 /** One conversational turn with JBIQ. */
 app.post('/api/chat', async (req, res) => {
   try {
-    const { messages = [], state = { phase: 'onboarding' }, mode = 'full' } = req.body || {};
+    const { messages = [], state = { phase: 'orientation' }, mode = 'full' } = req.body || {};
     const { reply, speech, state: nextState } = await runTurn(messages, state, mode);
     res.json({ reply, speech, state: nextState });
   } catch (err) {
@@ -90,15 +90,29 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+/** Photo -> the English text in it (JBIQ then explains it in dialogue). */
+app.post('/api/vision', async (req, res) => {
+  try {
+    const { imageBase64, mediaType = 'image/jpeg' } = req.body || {};
+    if (!imageBase64) return res.status(400).json({ error: 'no image' });
+    const extracted = await readImage(imageBase64, mediaType);
+    res.json({ extracted });
+  } catch (err) {
+    console.error('[vision]', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
 /** Text -> speech. ElevenLabs (streamed), with Sarvam as the quota fallback. */
 app.post('/api/tts', async (req, res) => {
   const raw = (req.body && req.body.text) || '';
-  const text = speechText(raw).trim();
+  const language = (req.body && req.body.language) || 'hi-IN';
+  const text = speechText(raw, language).trim();
   if (!text) return res.status(400).json({ error: 'empty text' });
   const provider = VOICE_PROVIDER();
 
   const sendSarvam = async () => {
-    const buf = await sarvamTTS(text);
+    const buf = await sarvamTTS(text, language);
     res.setHeader('Content-Type', 'audio/mpeg');
     res.end(buf);
   };

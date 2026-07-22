@@ -3,25 +3,35 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>JBIQ — English coach</title>
+  <title>JBIQ — Jobs, Careers & Skills</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
   <main class="app">
     <header class="topbar">
-      <div class="brand">JBIQ</div>
-      <div class="lesson" id="lessonLabel"></div>
+      <div class="brandwrap">
+        <div class="brand">JBIQ</div>
+        <div class="vertical">Jobs · Careers · Skills</div>
+      </div>
+      <div class="topright">
+        <div class="streak" id="streak" hidden></div>
+        <button class="reset" id="resetBtn" title="Reset (demo)">⟲</button>
+      </div>
     </header>
 
-    <!-- Mode switcher: full transcript · cue cards only · voice only -->
     <nav class="modes" id="modeTabs">
       <a data-mode="full" href="?mode=full">Full</a>
       <a data-mode="cards" href="?mode=cards">Cues only</a>
       <a data-mode="voice" href="?mode=voice">Voice only</a>
     </nav>
 
-    <!-- On-screen aid: the English phrase to repeat — pops in at the top -->
-    <section class="cards" id="cards" aria-live="polite"></section>
+    <!-- SCREEN = choice-among-many / data / drafts. Rendered from the convo. -->
+    <section class="shell" id="shell">
+      <div class="usecases" id="useCases"></div>
+      <div class="wordday" id="wordDay" hidden></div>
+      <div class="cards" id="cards" aria-live="polite"></div>
+      <div class="drafts" id="drafts" aria-live="polite"></div>
+    </section>
 
     <!-- The orb: idle / listening / thinking / speaking -->
     <section class="stage">
@@ -30,19 +40,18 @@
         <div class="ripple r1"></div>
         <div class="ripple r2"></div>
         <div class="ripple r3"></div>
-        <div class="orb-core">
-          <div class="eq"><i></i><i></i><i></i><i></i><i></i></div>
-        </div>
+        <div class="orb-core"><div class="eq"><i></i><i></i><i></i><i></i><i></i></div></div>
       </div>
       <div class="status" id="status">JBIQ taiyaar ho rahi hain…</div>
     </section>
 
-    <!-- Rolling transcript (aid, not the main event) -->
     <section class="transcript" id="transcript" aria-live="polite"></section>
 
     <footer class="controls">
+      <button id="photoBtn" class="btn icon" title="Photo → English" hidden>📷</button>
       <button id="startBtn" class="btn primary" hidden>Shuru karein</button>
       <button id="stopBtn" class="btn ghost">Rokein</button>
+      <input type="file" id="photoInput" accept="image/*" capture="environment" hidden />
     </footer>
   </main>
 

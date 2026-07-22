@@ -21,7 +21,7 @@ export function sarvamConfigured() {
  * JBIQ's spoken text is Hindi (Devanagari) with some English — hi-IN + a
  * bulbul:v3 Indic voice handles the code-mix well.
  */
-export async function sarvamTTS(text) {
+export async function sarvamTTS(text, language = 'hi-IN') {
   const speaker = process.env.SARVAM_VOICE || 'ritu';
   // v3 hard limit is 2500 chars; JBIQ turns are short, but guard anyway.
   const clipped = text.length > 2400 ? text.slice(0, 2400) : text;
@@ -30,7 +30,7 @@ export async function sarvamTTS(text) {
     headers: { 'api-subscription-key': key(), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       text: clipped,
-      target_language_code: 'hi-IN',
+      target_language_code: language || 'hi-IN',
       model: 'bulbul:v3',
       speaker,
       pace: 1.0,
