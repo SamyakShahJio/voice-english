@@ -7,7 +7,7 @@
 
 // ---- tunables ----
 const SILENCE_MS = 900, SPEECH_ONSET_MS = 150, NO_INPUT_MS = 9000;
-const BARGE_MIN_MS = 400, BARGE_GUARD_MS = 500, ENABLE_BARGE_IN = true;
+const BARGE_MIN_MS = 400, BARGE_GUARD_MS = 500, ENABLE_BARGE_IN = false; // off: on speakers it self-triggered & cut clips
 
 const SUPPORTED_LANGS = ['hi-IN','ta-IN','bn-IN','te-IN','mr-IN','gu-IN','kn-IN','ml-IN','pa-IN','od-IN'];
 
@@ -96,6 +96,7 @@ let mode = 'idle', noiseFloor = 0.006, speechThreshold = 0.015, bargeThreshold =
 let hasSpoken = false, voiceFrames = 0, bargeFrames = 0;
 let listenStartTs = 0, lastVoiceTs = 0, speakStartTs = 0, noInputTries = 0;
 let currentSource = null, bargedIn = false;
+let turn = 0; // serialises turns: a new turn supersedes any in-flight one (no overlap)
 
 // ============================================================ boot
 el.start.addEventListener('click', start);
@@ -216,10 +217,11 @@ async function handleNoInput() {
   if (mode !== 'listening') return; noInputTries++; mode = 'thinking';
   try { if (recorder && recorder.state !== 'inactive') { recorder.onstop = null; recorder.stop(); } } catch {}
   if (noInputTries > 2) { setStatus('Jab taiyaar hon, boliye.'); noInputTries = 0; enterListening(); return; }
-  startThinkingCue();
+  const my = ++turn; startThinkingCue();
   const transient = messages.concat({ role: 'user', content: '[learner abhi tak chup hai — unhe pyaar se ek chhoti line mein dobara bulao]' });
-  try { const { reply, speech, state } = await chat(transient, session); session = state; addBubble('jbiq', reply); await speak(speech || reply); } catch (e) { console.error(e); }
-  if (running && !bargedIn) enterListening();
+  try { const { reply, speech, state } = await chat(transient, session); if (my !== turn) return; session = state; addBubble('jbiq', reply); await speak(speech || reply, my); } catch (e) { console.error(e); }
+  if (my !== turn || !running) return;
+  enterListening();
 }
 
 // ============================================================ turns
@@ -237,20 +239,25 @@ async function handleUserTurn(blob) {
   await sendToBrain(text, modelContent);
 }
 
-/** From taps / photo (no STT). */
+/** From STT / taps / photo. Serialised: a new call supersedes any in-flight one. */
 async function sendToBrain(displayText, modelContent) {
+  const my = ++turn;
+  stopPlayback(); stopThinkingCue();  // kill anything from a previous turn
+  try { if (recorder && recorder.state !== 'inactive') { recorder.onstop = null; recorder.stop(); } } catch {}
   if (displayText) addBubble('user', displayText);
   messages.push({ role: 'user', content: modelContent || displayText });
   mode = 'thinking'; setOrb('thinking'); setStatus('Samajh rahi hoon…'); startThinkingCue();
   let reply, speech, state;
   try { ({ reply, speech, state } = await chat(messages, session)); }
-  catch (err) { console.error(err); stopThinkingCue(); setStatus('JBIQ se connect nahi ho paaya.'); if (running) enterListening(); return; }
+  catch (err) { console.error(err); if (my !== turn) return; stopThinkingCue(); setStatus('JBIQ se connect nahi ho paaya.'); if (running) enterListening(); return; }
+  if (my !== turn) return;            // a newer turn took over — drop this one
   session = state; persist();
   messages.push({ role: 'assistant', content: reply });
   addBubble('jbiq', reply);
   renderScreen(reply);
-  await speak(speech || reply);
-  if (running && !bargedIn) enterListening(); // barge-in already re-opened the mic
+  await speak(speech || reply, my);
+  if (my !== turn || !running) return;
+  enterListening();
 }
 
 function confidenceNote(words) {
@@ -259,18 +266,19 @@ function confidenceNote(words) {
 }
 
 // ============================================================ speaking (TTS)
-async function speak(text) {
+async function speak(text, myTurn) {
+  stopPlayback();                 // never overlap a prior clip
   const chunks = splitIntoSpeakables(text);
   if (!chunks.length) return;
-  bargedIn = false; bargeFrames = 0; mode = 'speaking'; stopThinkingCue();
+  mode = 'speaking'; stopThinkingCue();
   speakStartTs = performance.now(); setOrb('speaking'); setStatus('JBIQ bol rahi hain…');
   const clips = new Array(chunks.length); clips[0] = fetchClip(chunks[0]);
   for (let i = 0; i < chunks.length; i++) {
     if (i + 1 < chunks.length) clips[i + 1] = fetchClip(chunks[i + 1]);
     let buf; try { buf = await clips[i]; } catch (err) { if (err && err.quota) { voiceError(); return; } console.error('tts', err); continue; }
-    if (bargedIn || !running) break;
-    speakStartTs = performance.now(); await playBuffer(buf);
-    if (bargedIn || !running) break;
+    if ((myTurn !== undefined && myTurn !== turn) || !running) { stopPlayback(); return; } // superseded
+    await playBuffer(buf);
+    if ((myTurn !== undefined && myTurn !== turn) || !running) return;
   }
 }
 async function fetchClip(text) {
@@ -295,15 +303,18 @@ function stopThinkingCue() { if (thinkingTimer) { clearInterval(thinkingTimer); 
 
 // ============================================================ kickoff
 async function greet() {
+  const my = ++turn;
   mode = 'thinking'; setOrb('thinking'); setStatus('JBIQ aa rahi hain…'); startThinkingCue();
   try {
     const { reply, speech, state } = await chat([], session);
+    if (my !== turn) return;   // e.g. learner tapped a tile while greeting loaded
     session = state; persist();
     messages.push({ role: 'assistant', content: reply });
     addBubble('jbiq', reply); renderScreen(reply);
-    await speak(speech || reply);
-  } catch (err) { console.error(err); fail('JBIQ se connect nahi ho paaya. Server chal raha hai?'); return; }
-  if (running && !bargedIn) enterListening();
+    await speak(speech || reply, my);
+  } catch (err) { console.error(err); if (my !== turn) return; fail('JBIQ se connect nahi ho paaya. Server chal raha hai?'); return; }
+  if (my !== turn || !running) return;
+  enterListening();
 }
 
 // ============================================================ API
