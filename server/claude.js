@@ -19,7 +19,7 @@ function anthropic() {
 }
 
 const MODEL = () => process.env.CLAUDE_MODEL || 'claude-sonnet-5';
-const MAX_TOKENS = 700;
+const MAX_TOKENS = 320; // short turns (emitted twice: roman + native) — keeps latency low
 
 const tool = (name) => TOOLS.find((t) => t.name === name);
 
