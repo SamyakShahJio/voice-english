@@ -219,7 +219,7 @@ async function handleNoInput() {
   startThinkingCue();
   const transient = messages.concat({ role: 'user', content: '[learner abhi tak chup hai — unhe pyaar se ek chhoti line mein dobara bulao]' });
   try { const { reply, speech, state } = await chat(transient, session); session = state; addBubble('jbiq', reply); await speak(speech || reply); } catch (e) { console.error(e); }
-  if (running) enterListening();
+  if (running && !bargedIn) enterListening();
 }
 
 // ============================================================ turns
@@ -250,7 +250,7 @@ async function sendToBrain(displayText, modelContent) {
   addBubble('jbiq', reply);
   renderScreen(reply);
   await speak(speech || reply);
-  if (running) enterListening();
+  if (running && !bargedIn) enterListening(); // barge-in already re-opened the mic
 }
 
 function confidenceNote(words) {
@@ -303,7 +303,7 @@ async function greet() {
     addBubble('jbiq', reply); renderScreen(reply);
     await speak(speech || reply);
   } catch (err) { console.error(err); fail('JBIQ se connect nahi ho paaya. Server chal raha hai?'); return; }
-  if (running) enterListening();
+  if (running && !bargedIn) enterListening();
 }
 
 // ============================================================ API
