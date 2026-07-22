@@ -21,9 +21,10 @@ import { sarvamTTS, sarvamSTT, sarvamConfigured } from './sarvam.js';
 import { runTurn } from './claude.js';
 import { speechText } from './text.js';
 
-// auto = ElevenLabs, fall back to Sarvam only when EL quota runs out.
-// Force one provider with VOICE_PROVIDER=elevenlabs | sarvam.
-const VOICE_PROVIDER = () => process.env.VOICE_PROVIDER || 'auto';
+// Default: Sarvam only (ElevenLabs quota ran out too often). Set
+// VOICE_PROVIDER=auto to use ElevenLabs first with Sarvam fallback, or
+// VOICE_PROVIDER=elevenlabs to force ElevenLabs.
+const VOICE_PROVIDER = () => process.env.VOICE_PROVIDER || 'sarvam';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
