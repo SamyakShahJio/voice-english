@@ -294,7 +294,7 @@ body[data-mode="voice"] .cards { display: none; }
 
 /* word of the day */
 .wordday {
-  background: linear-gradient(135deg, #efe9ff, #f6f2ff); border: 1px solid #e2d8ff;
+  background: var(--surface); border: 1px solid var(--line);
   border-radius: 16px; padding: 14px 16px;
 }
 .wordday .wd-label { font-size: 10.5px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.6px; }

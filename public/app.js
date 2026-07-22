@@ -37,12 +37,21 @@ const el = {
   photo: document.getElementById('photoBtn'), photoInput: document.getElementById('photoInput'),
 };
 
-// ---- mode ----
-const MODE = (() => {
+// ---- mode (UI density) — switchable IN PLACE, never resets the session ----
+let MODE = (() => {
   const m = new URLSearchParams(location.search).get('mode');
   return ['full','cards','voice'].includes(m) ? m : 'full';
 })();
 document.body.dataset.mode = MODE;
+let lastReply = '';
+function setMode(m) {
+  if (!['full','cards','voice'].includes(m) || m === MODE) return;
+  MODE = m;
+  document.body.dataset.mode = MODE;
+  const url = new URL(location.href); url.searchParams.set('mode', m); history.replaceState(null, '', url);
+  document.querySelectorAll('#modeTabs a').forEach((a) => a.classList.toggle('active', a.dataset.mode === MODE));
+  renderScreen(lastReply); // re-render current screen for the new density; convo continues
+}
 
 // ---- profile (localStorage) + session ----
 function loadProfile() { try { return JSON.parse(localStorage.getItem('jbiq_profile') || 'null'); } catch { return null; } }
@@ -94,8 +103,11 @@ el.stop.addEventListener('click', stop);
 el.reset.addEventListener('click', () => { localStorage.removeItem('jbiq_profile'); location.href = location.pathname + location.search; });
 el.photo.addEventListener('click', () => el.photoInput.click());
 el.photoInput.addEventListener('change', onPhoto);
-document.querySelectorAll('#modeTabs a').forEach((a) => { if (a.dataset.mode === MODE) a.classList.add('active'); });
-if (session.profile.returning && profile.streakDays) { el.streak.hidden = false; el.streak.textContent = `🔥 ${profile.streakDays} din`; }
+document.querySelectorAll('#modeTabs a').forEach((a) => {
+  if (a.dataset.mode === MODE) a.classList.add('active');
+  a.addEventListener('click', (e) => { e.preventDefault(); setMode(a.dataset.mode); });
+});
+// Streak lives in JBIQ's VOICE, not on screen (retention is spoken).
 renderUseCases();
 start();
 
@@ -329,7 +341,8 @@ function setStatus(t) { el.status.textContent = t; }
 function setOrb(s) { el.orb.dataset.state = s; }
 
 function addBubble(who, text) {
-  if (MODE !== 'full') return;
+  // Always build the transcript (CSS hides it in cards/voice) so switching to
+  // Full mid-conversation reveals the history — a clean hand-off.
   const div = document.createElement('div'); div.className = 'bubble ' + who;
   if (who === 'jbiq') {
     let html = '', last = 0, m; const t = text.replace(DRAFT_MARKER, '').trim(); EN_MARKER.lastIndex = 0;
@@ -389,6 +402,8 @@ function renderDrafts(reply) {
 }
 
 function renderScreen(reply) {
+  if (reply !== undefined && reply !== null) lastReply = reply;
+  reply = lastReply;
   const phase = session.phase;
   el.useCases.style.display = phase === 'orientation' ? '' : 'none';
   if (phase === 'english_onboarding') renderWordDay(); else el.wordDay.hidden = true;
