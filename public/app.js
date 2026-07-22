@@ -123,11 +123,21 @@ document.querySelectorAll('#modeTabs a').forEach((a) => {
 renderUseCases();
 start();
 
+// Always require ONE gesture before greeting — browsers block audio played
+// without a user gesture, which made JBIQ's opening greeting silent (then it
+// looked like it went straight to listening). The tap unlocks + primes audio.
+let audioUnlocked = false;
 function ensureAudioRunning() {
-  if (audioCtx.state === 'running') return Promise.resolve();
-  setStatus('Sunne ke liye taiyaar — kahin bhi tap karein');
+  if (audioUnlocked) return Promise.resolve();
+  setStatus('▶︎  Shuru karne ke liye tap karein');
+  setOrb('idle');
   return new Promise((resolve) => {
-    const go = async () => { window.removeEventListener('pointerdown', go); window.removeEventListener('keydown', go); try { await audioCtx.resume(); } catch {} resolve(); };
+    const go = async () => {
+      window.removeEventListener('pointerdown', go); window.removeEventListener('keydown', go);
+      try { await audioCtx.resume(); } catch {}
+      try { const b = audioCtx.createBuffer(1, 1, 22050); const s = audioCtx.createBufferSource(); s.buffer = b; s.connect(audioCtx.destination); s.start(0); } catch {} // prime
+      audioUnlocked = true; resolve();
+    };
     window.addEventListener('pointerdown', go); window.addEventListener('keydown', go);
   });
 }
@@ -352,7 +362,8 @@ function splitIntoSpeakables(text) {
   const held = [];
   const protectedText = text.replace(EN_MARKER, (m) => { held.push(m); return `${held.length - 1}`; }).replace(DRAFT_MARKER, ' ');
   const restore = (p) => p.replace(/(\d+)/g, (_x, i) => held[+i] !== undefined ? held[+i] : _x);
-  return protectedText.split(/(?<=[।.!?])\s+/).map(restore).map((p) => p.trim()).filter((p) => /[a-zA-Zऀ-ॿ஀-௿ঀ-৿]/.test(p));
+  // keep any chunk with real letters — Latin OR any Indic script (Devanagari→Malayalam, U+0900–U+0D7F)
+  return protectedText.split(/(?<=[।.!?])\s+/).map(restore).map((p) => p.trim()).filter((p) => /[a-zA-Zऀ-ൿ]/.test(p));
 }
 function extractPhrases(t) { const o = []; let m; EN_MARKER.lastIndex = 0; while ((m = EN_MARKER.exec(t))) o.push(m[1].trim()); return o; }
 function extractDrafts(t) { const o = []; let m; DRAFT_MARKER.lastIndex = 0; while ((m = DRAFT_MARKER.exec(t))) o.push(m[1].trim()); return o; }
